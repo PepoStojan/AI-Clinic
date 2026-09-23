@@ -40,6 +40,31 @@ export async function createChecklistItems(
   return data;
 }
 
+export type ChecklistItemUpdate = Database["public"]["Tables"]["checklist_items"]["Update"];
+
+/**
+ * Updates the single checklist row identified by its idempotency_key
+ * (audit_id + component + target + check_key) -- the same logical row a
+ * retry must reuse, never a new one.
+ */
+export async function updateChecklistItemByIdempotencyKey(
+  idempotencyKey: string,
+  patch: ChecklistItemUpdate
+): Promise<ChecklistItemRow> {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("checklist_items")
+    .update(patch)
+    .eq("idempotency_key", idempotencyKey)
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(`updateChecklistItemByIdempotencyKey failed: ${error.message}`);
+  }
+  return data;
+}
+
 export async function listChecklistItemsByAuditId(auditId: string): Promise<ChecklistItemRow[]> {
   const supabase = getSupabaseServerClient();
   const { data, error } = await supabase
