@@ -16,6 +16,30 @@ export async function createChecklistItem(
   return data;
 }
 
+/**
+ * Bulk-inserts checklist rows idempotently: a row whose idempotency_key
+ * already exists is left untouched instead of erroring the whole batch,
+ * so checklist generation is safe to re-run for the same audit_id.
+ */
+export async function createChecklistItems(
+  items: ChecklistItemInsert[]
+): Promise<ChecklistItemRow[]> {
+  if (items.length === 0) {
+    return [];
+  }
+
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("checklist_items")
+    .upsert(items, { onConflict: "idempotency_key", ignoreDuplicates: true })
+    .select();
+
+  if (error) {
+    throw new Error(`createChecklistItems failed: ${error.message}`);
+  }
+  return data;
+}
+
 export async function listChecklistItemsByAuditId(auditId: string): Promise<ChecklistItemRow[]> {
   const supabase = getSupabaseServerClient();
   const { data, error } = await supabase
