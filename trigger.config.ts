@@ -1,10 +1,7 @@
 import { defineConfig } from "@trigger.dev/sdk";
 
 export default defineConfig({
-  // TODO: replace after `npx trigger.dev login` + project creation/link.
-  // See AI-Clinic-RESTART.md / the INFRA-002 completion report for the
-  // exact manual steps.
-  project: process.env.TRIGGER_PROJECT_REF ?? "<TRIGGER_PROJECT_REF>",
+  project: "proj_pazyklzkrxxmecphnoco", // SmartClick org, AI-Clinic project
   dirs: ["./src/trigger"],
   // Default only; long-running audit/orchestration tasks can override this
   // per-task once they exist (CORE-001+).
