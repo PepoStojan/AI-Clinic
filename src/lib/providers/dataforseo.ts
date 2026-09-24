@@ -282,3 +282,70 @@ export async function callGoogleAiMode(prompt: string): Promise<ProviderCallResu
   ]);
   return { parsed: parseGoogleAiModeResponse(json), attempts, raw: json };
 }
+
+// COMP-003 DataForSEO fallback: plain Google organic SERP, used only when
+// Apify misses a platform. One thin endpoint wrapper on the existing
+// gateway -- not a new search-engine abstraction.
+
+export interface OrganicResult {
+  title: string | null;
+  url: string;
+  domain: string;
+  snippet: string | null;
+}
+
+export interface OrganicSearchResult {
+  ok: boolean;
+  results: OrganicResult[];
+  attempts: number;
+  errorMessage: string | null;
+}
+
+export function parseGoogleOrganicResponse(json: unknown): { ok: boolean; results: OrganicResult[]; noResultReason: string | null } {
+  const body = (json ?? {}) as JsonRecord;
+  const tasks = Array.isArray(body.tasks) ? body.tasks : [];
+  if (tasks.length === 0) {
+    return { ok: false, results: [], noResultReason: "No tasks in response" };
+  }
+
+  const task = tasks[0] as JsonRecord;
+  if (task.status_code !== 20000) {
+    return { ok: false, results: [], noResultReason: `task status ${task.status_code}: ${task.status_message ?? ""}` };
+  }
+
+  const results = Array.isArray(task.result) ? task.result : [];
+  const items = (results[0]?.items ?? []) as JsonRecord[];
+
+  const organic: OrganicResult[] = items
+    .filter((item) => item.type === "organic" && typeof item.url === "string")
+    .map((item) => ({
+      title: typeof item.title === "string" ? item.title : null,
+      url: item.url as string,
+      domain: typeof item.domain === "string" ? item.domain : urlDomain(item.url as string),
+      snippet: typeof item.description === "string" ? item.description : null,
+    }));
+
+  return { ok: true, results: organic, noResultReason: null };
+}
+
+export async function searchGoogleOrganic(query: string): Promise<OrganicSearchResult> {
+  try {
+    const { json, attempts } = await postDataForSeoWithRetry("serp/google/organic/live/advanced", [
+      {
+        keyword: query.slice(0, 700),
+        location_code: AI_MODE_LOCATION_CODE,
+        language_code: AI_MODE_LANGUAGE_CODE,
+        depth: 10,
+      },
+    ]);
+    const parsed = parseGoogleOrganicResponse(json);
+    return { ok: parsed.ok, results: parsed.results, attempts, errorMessage: parsed.noResultReason };
+  } catch (error) {
+    return {
+      ok: false,
+      results: [],
+      attempts: 1,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
