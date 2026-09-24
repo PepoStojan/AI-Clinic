@@ -5,7 +5,7 @@
 // LLM answers. A social-profile candidate is a URL + a short title/snippet,
 // not a paragraph, so a slug/keyword check is the right level of effort.
 
-import { classifyUrlPlatform, normalizeToken, profileSlug, type SocialPlatform } from "./platforms";
+import { classifyUrlPlatform, isContentPathUrl, normalizeToken, profileSlug, type SocialPlatform } from "./platforms";
 
 export type IdentityVerdict = "Confirmed" | "Unverified" | "Reject";
 
@@ -45,7 +45,12 @@ export function validateProfileIdentity(input: IdentityValidationInput): Identit
 
   const matchedSignals: string[] = [];
   const normalizedBrand = normalizeToken(brandName);
-  const rawSlug = profileSlug(profileUrl);
+  // A content/post-page URL (an article, video, or post that merely
+  // mentions the brand as one word in a long slug) is never treated as a
+  // profile-identity match -- see isContentPathUrl. Only an actual
+  // profile-shaped URL's slug counts as an identity signal.
+  const isContentPage = isContentPathUrl(profileUrl);
+  const rawSlug = isContentPage ? "" : profileSlug(profileUrl);
   const slug = normalizeToken(rawSlug);
   // Token-based, not a raw substring check -- "megaacmecorpxyz" must not
   // count as a brand match just because "acme" appears inside it.
@@ -57,7 +62,16 @@ export function validateProfileIdentity(input: IdentityValidationInput): Identit
     normalizedBrand.length > 0 && slug.length > 0 && (slug === normalizedBrand || slugTokens.includes(normalizedBrand));
   if (slugMatchesBrand) matchedSignals.push("profile URL slug matches brand name");
 
-  const domainInTitle = domain.length > 0 && loweredTitle.includes(domain);
+  // Full domain text (e.g. "stripe.com"), not just the label ("stripe") --
+  // live COMP-003 verification against a real DataForSEO fallback result
+  // (an unrelated TikTok video whose caption happened to say "Stripe")
+  // showed that checking the bare label collapses this signal onto a plain
+  // brand-name mention whenever the domain label equals the brand name,
+  // which is the common case (most companies' domain matches their brand).
+  // The full domain string is a much more specific signal a random mention
+  // is unlikely to contain.
+  const fullDomain = registeredDomain.trim().toLowerCase().replace(/^www\./, "");
+  const domainInTitle = fullDomain.length > 0 && loweredTitle.includes(fullDomain);
   if (domainInTitle) matchedSignals.push("registered domain referenced in title/snippet");
 
   const slugMatchesDomainLabel = domain.length > 0 && slug.length > 0 && (slug === domain || slugTokens.includes(domain));

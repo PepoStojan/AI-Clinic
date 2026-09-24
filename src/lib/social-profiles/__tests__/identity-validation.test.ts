@@ -80,6 +80,59 @@ describe("validateProfileIdentity", () => {
   });
 });
 
+describe("live-verification regressions (2026-09-24, real Stripe fallback data)", () => {
+  // Stripe's registered domain label ("stripe") equals its brand name
+  // ("Stripe") -- the common real-world case. A real DataForSEO fallback
+  // result for tiktok.com returned an unrelated video whose caption merely
+  // said "Stripe" in prose; with the domain-label check this collapsed onto
+  // the SAME signal as a bare brand mention and was wrongly Confirmed.
+  it("does not Confirm via 'domain referenced' when the domain label equals the brand name and only the bare word is present", () => {
+    const result = validateProfileIdentity({
+      platform: "tiktok",
+      profileUrl: "https://www.tiktok.com/@randomuser/video/123456",
+      profileTitle: "What is Stripe payment processing? A quick explainer",
+      brandName: "Stripe",
+      registeredDomain: "stripe.com",
+    });
+    expect(result.verdict).not.toBe("Confirmed");
+  });
+
+  it("Confirms via 'domain referenced' when the FULL domain text is actually present", () => {
+    const result = validateProfileIdentity({
+      platform: "tiktok",
+      profileUrl: "https://www.tiktok.com/@stripe",
+      profileTitle: "Stripe (stripe.com) on TikTok",
+      brandName: "Stripe",
+      registeredDomain: "stripe.com",
+    });
+    expect(result.verdict).toBe("Confirmed");
+  });
+
+  it("a content/post-page URL whose long slug merely contains the brand as one word is never Confirmed via slug match", () => {
+    // Real result: tiktok.com/discover/what-is-stripe-payment -- a topic
+    // page, not stripe's profile.
+    const result = validateProfileIdentity({
+      platform: "tiktok",
+      profileUrl: "https://www.tiktok.com/discover/what-is-stripe-payment",
+      profileTitle: "What is Stripe Payment | TikTok Search",
+      brandName: "Stripe",
+      registeredDomain: "stripe.com",
+    });
+    expect(result.verdict).not.toBe("Confirmed");
+  });
+
+  it("a genuine profile-shaped URL (short handle path) still Confirms via slug match", () => {
+    const result = validateProfileIdentity({
+      platform: "tiktok",
+      profileUrl: "https://www.tiktok.com/@stripe",
+      profileTitle: "Stripe on TikTok",
+      brandName: "Stripe",
+      registeredDomain: "stripe.com",
+    });
+    expect(result.verdict).toBe("Confirmed");
+  });
+});
+
 describe("selectBestCandidate", () => {
   it("prefers a Confirmed candidate over an Unverified one", () => {
     const best = selectBestCandidate([

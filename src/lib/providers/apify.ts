@@ -3,19 +3,35 @@ import "server-only";
 import { withRetry } from "../util/retry";
 import { classifyUrlPlatform, type SocialPlatform } from "../social-profiles/platforms";
 
-// COMP-003 primary discovery: Apify actor meU6XrAxXviSICIXQ, run
-// synchronously via run-sync-get-dataset-items. The actor has been manually
-// validated by the user but its exact output field names are undocumented
-// in this repo and no live credentials were available in this environment
-// to verify them (see COMP-003 completion report -- manual action needed).
-// extractSocialCandidates therefore deep-scans the returned dataset for any
-// string value that is itself a URL on one of the 8 platform domains,
-// rather than trusting specific field names -- tolerant of whatever shape
-// the actor actually returns, and avoids silently dropping platforms if a
-// field is named differently than expected.
+// COMP-003 primary discovery: Apify actor meU6XrAxXviSICIXQ
+// (codescraper/website-social-links-scraper), run synchronously via
+// run-sync-get-dataset-items. Input schema confirmed live against the
+// actor's own build metadata (GET /v2/acts/{id}/builds/default): requires
+// `startUrls` (array of plain URL/domain STRINGS, not {url} objects),
+// `platforms` (array of its own enum values -- "twitter" not "x_twitter"),
+// and `maxPagesPerDomain`. extractSocialCandidates still deep-scans the
+// returned dataset for any string value that is itself a URL on one of the
+// 8 platform domains rather than trusting specific output field names --
+// the actor's OUTPUT shape (as opposed to its input schema) is still only
+// confirmed by this scan succeeding at runtime, and staying tolerant here
+// costs nothing.
 
 const APIFY_BASE_URL = "https://api.apify.com/v2";
 const REQUEST_TIMEOUT_MS = 60_000;
+const MAX_PAGES_PER_DOMAIN = 5;
+
+// Our 8 canonical platform keys -> the actor's own enum values. Only the
+// X/Twitter name differs; the rest match 1:1.
+const ACTOR_PLATFORM_NAMES: Record<SocialPlatform, string> = {
+  linkedin: "linkedin",
+  facebook: "facebook",
+  instagram: "instagram",
+  x_twitter: "twitter",
+  youtube: "youtube",
+  tiktok: "tiktok",
+  threads: "threads",
+  reddit: "reddit",
+};
 
 export class ApifyRequestError extends Error {
   constructor(
@@ -48,7 +64,11 @@ async function runActorSync(websiteUrl: string): Promise<unknown[]> {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ startUrls: [{ url: websiteUrl }] }),
+        body: JSON.stringify({
+          startUrls: [websiteUrl],
+          platforms: Object.values(ACTOR_PLATFORM_NAMES),
+          maxPagesPerDomain: MAX_PAGES_PER_DOMAIN,
+        }),
         signal: controller.signal,
       }
     );

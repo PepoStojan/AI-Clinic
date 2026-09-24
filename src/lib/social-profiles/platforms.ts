@@ -78,6 +78,42 @@ export function profileSlug(url: string): string {
   }
 }
 
+// Path segments that mark a URL as a content/post page rather than a
+// profile page -- e.g. tiktok.com/discover/what-is-stripe-payment or
+// threads.net/@handle/post/.../the-stripe-sleeve-knit-w. Live COMP-003
+// verification (real DataForSEO fallback results) showed a brand name
+// merely appearing as one word inside a long article/post slug was being
+// treated the same as an actual profile handle (linkedin.com/company/stripe,
+// tiktok.com/@stripe) -- this guard keeps slug-identity matching scoped to
+// what looks like an actual profile URL.
+const CONTENT_PATH_SEGMENTS = new Set([
+  "post",
+  "posts",
+  "video",
+  "videos",
+  "watch",
+  "status",
+  "statuses",
+  "discover",
+  "article",
+  "articles",
+  "blog",
+  "photo",
+  "photos",
+  "story",
+  "stories",
+]);
+
+/** True when the URL's path looks like a content/post page, not a profile page. */
+export function isContentPathUrl(url: string): boolean {
+  try {
+    const segments = new URL(url.trim()).pathname.split("/").filter(Boolean).map((s) => s.toLowerCase());
+    return segments.some((s) => CONTENT_PATH_SEGMENTS.has(s));
+  } catch {
+    return false;
+  }
+}
+
 export function normalizeToken(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
