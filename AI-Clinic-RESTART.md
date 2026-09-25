@@ -1,89 +1,165 @@
 # AI-Clinic — Restart Checkpoint
 
 ## Current Phase
-Implementation — audit components
+Same-day MVP shipping phase. The application now works end-to-end locally with real services.
 
 ## Completed Tasks
-- INFRA-001 — Supabase Foundation — PASS
-- INFRA-002 — Trigger.dev Foundation — PASS
-- CORE-001 — Audit Creation + Checklist Engine — PASS
-- COMP-001 — Brand Recognition — PASS
-- COMP-002 — Prompt Visibility — PASS
+- INFRA-001 — Supabase Foundation — PASS / CLOSED
+- INFRA-002 — Trigger.dev Foundation — PASS / CLOSED
+- CORE-001 — Audit Creation + Checklist Engine — PASS / CLOSED
+- COMP-001 — Brand Recognition — PASS / CLOSED
+- COMP-002 — Prompt Visibility — PASS / CLOSED
+- COMP-003 — Social Profiles — PASS / CLOSED
+- COMP-004 — Directories — PASS / CLOSED
+- COMP-005 — Technical Accessibility — PASS / CLOSED
+- CORE-002 — Deterministic Gap Detection + Grouping — PASS / CLOSED
+- AI-001 — Evidence-Bound Gap Interpretation — PASS / CLOSED
+- REPORT-001 — Canonical Report Object + Pre-PDF Gate — PASS / CLOSED
+- PDF-001 — Playwright PDF Generation — PASS / CLOSED
+- UI-001 — MVP UI + End-to-End Audit Execution — PASS / CLOSED
 
 ## Current State
-- Last completed task: COMP-002
-- Next task: COMP-003 — Social Profiles
-- Do not start COMP-003 without explicit user approval
-- Current blockers: None
+- Last completed task: UI-001
+- Next task: QA-001
+- After QA-001: DEPLOY-001
+- Do not start QA-001 without explicit user authorization
+- Current blockers: None blocking QA
 
-## Important Decisions Since Previous Checkpoint
+## Current Working Product
 
-1. New audits remain `CREATED` after CORE-001. `QUEUED` is only used when real Trigger.dev orchestration hands the audit to background execution.
-2. Brand Recognition uses DataForSEO as the unified gateway for all 4 systems: ChatGPT/OpenAI, Gemini, Claude, Google AI.
-3. Do NOT build native OpenAI/Gemini/Anthropic SDK adapters for Brand Recognition in the MVP.
-4. Brand Recognition fixed questions: "What is [Brand Name]?", "What does [Brand Name] offer?", "What kind of company is [Brand Name]?"
-5. Brand Recognition reference profile currently uses: brand/company name, registered domain, website URL, optional product/service name. No live official-site content fetch is implemented yet — accepted MVP decision, not a blocker.
-6. Brand Recognition statuses: Accurate, Partially Accurate, Inaccurate, Not Recognized, No Result.
-7. No Result never becomes a gap.
-8. Brand Recognition checklist mapping: Accurate → `COMPLETED`; Partial/Inaccurate/Not Recognized → `GAP_FOUND`; No Result → `COULD_NOT_VERIFY`; `FAILED` only for internal/system failures.
-9. Brand Recognition is fully implemented and live-tested.
-10. DataForSEO model choices currently used: ChatGPT `gpt-4.1-mini`, Gemini `gemini-2.5-flash`, Claude `claude-haiku-4-5`, Google AI via DataForSEO's Google AI Mode endpoint.
-11. Prompt Visibility mention-status mapping is exact and locked: Strong Mention requires Confirmed Entity Match AND a literal brand/product mention AND an audited domain/URL citation; Cited Only is domain citation without a literal mention (never collapsed into Strong Mention); Probable Entity Match → Mentioned; Ambiguous Entity → Ambiguous; Wrong Entity/No Entity Signal → Not Mentioned; provider/parse failure or no Google AI Overview → No Result (excluded from the visibility denominator, never a gap).
-12. Prompt Visibility's entity-validation keyword-signal table (VAL-003C) was generalized away from SmartClick-specific test fixtures (category/services/market/location strings) to the signals actually present in the real schema: audited domain text, product name text, a conflicting-domain regex, and generic multi-entity phrasing. The multi-occurrence windowing/scoring/decisiveness algorithm itself is unchanged. Approved generalization, not a redesign.
-13. Prompt Visibility's decisive-window abstention rule was narrowed versus the validated script: it no longer skips the Claude semantic judge just because a window's score is weak/near-zero (that gate assumed the old rich keyword table's signal density, which doesn't hold generically) — it only abstains for a genuine structural multi-entity pattern (same nonzero score tied across 3+ windows, or two comparably-decisive conflicting windows).
+Live-verified end-to-end flow:
 
-Do not change these during restart preparation.
+```
+Shared Password Login
+→ New Audit
+→ Audit Creation
+→ Checklist Generation
+→ Trigger.dev Queue
+→ 5 Audit Components
+→ Deterministic Gap Detection
+→ Evidence-Bound Interpretation
+→ Canonical Report
+→ Pre-PDF Gate
+→ Playwright PDF
+→ Private Supabase Storage
+→ COMPLETED
+→ Signed PDF Download
+```
 
-## Infrastructure Status
+- Final clean real end-to-end run: **38.4 seconds**
+- Test company: Stripe
+- Result: PASS
 
-**Supabase:** live, 6 core tables live, `audit-reports` bucket private, integration verified.
+## UI-001 State
 
-**Trigger.dev:** project live and linked, smoke task live-verified, idempotency verified, independent audit runs verified.
+**Shared access:** shared password only, verified server-side, signed httpOnly session cookie. No user accounts, roles, or SSO.
 
-**Git:** initialized, working commits exist.
+**Screens (exactly 4):**
+1. Shared Access
+2. New Audit
+3. Audits List
+4. Audit Detail / Progress
 
-**GitHub remote:** not configured (`git remote -v` returns nothing).
+**Progress polling:** ~every 4 seconds, stops on terminal status, no fake percentages.
 
-**Vercel:** not configured (no `.vercel` directory, no `vercel.json`).
+**Audit statuses:** CREATED, QUEUED, PROCESSING, VALIDATING, READY_FOR_PDF, GENERATING_PDF, COMPLETED, BLOCKED, PARTIAL, FAILED.
 
-## Test Status
+**Current interpretation (accepted for MVP unless QA finds a concrete issue):**
+- Component crash → PARTIAL
+- Clean pre-PDF gate failure → BLOCKED
+- Unrecoverable pipeline/system failure → FAILED
 
-**CORE / schema regression:**
-- schema integration: PASS
-- audit creation integration: PASS
+## Orchestration State
 
-**COMP-001:**
-- typecheck: PASS
-- lint: PASS
-- build: PASS
-- unit tests: 67/67 PASS
-- Brand Recognition live integration: 1/1 PASS
-- schema + audit-creation regression: 12/12 PASS
+Real Trigger.dev orchestration exists. Main task: `run-ai-clinic-audit`.
 
-**COMP-002:**
-- typecheck: PASS
-- lint: PASS
-- build: PASS
-- unit tests: 26/26 PASS (entity-validation 18, run-component 8)
-- Prompt Visibility live integration: 1/1 PASS (1 target x 1 prompt x 4 providers)
-- full regression (all unit suites): 93/93 PASS
+Pipeline:
+1. PROCESSING
+2. `runBrandRecognitionComponent`
+3. `runPromptVisibilityComponent`
+4. `runSocialProfilesComponent`
+5. `runDirectoriesComponent`
+6. `runTechnicalAccessibilityComponent`
+7. VALIDATING
+8. `runGapDetection`
+9. `runGapInterpretation`
+10. `runReportAssembly`
+11. GENERATING_PDF
+12. `runPdfGeneration`
+13. COMPLETED
+
+The 5 components run via `Promise.allSettled`. `CREATED → QUEUED` occurs only after successful Trigger.dev submission. The browser does not need to remain open.
+
+## Important Locked Implementation Decisions
+
+1. Brand Recognition uses the DataForSEO unified gateway for ChatGPT, Gemini, Claude, and Google AI. No native OpenAI/Gemini/Anthropic SDK adapters.
+2. Prompt Visibility uses the validated DataForSEO / VAL-003C entity-validation logic, generalized to the real schema (no SmartClick-specific fixtures).
+3. Social Profiles: Apify actor `meU6XrAxXviSICIXQ` primary, DataForSEO SERP fallback; real actor output schema verified live.
+4. Directories: exactly 10 platforms, DataForSEO primary, Claude/DataForSEO web-search fallback, no "Not Applicable," no ratings/review counts.
+5. Technical Accessibility: exactly 6 crawlers, robots.txt + llms.txt only, fully deterministic, no AI.
+6. N/A / Could Not Verify / No Result never becomes a gap, anywhere in the pipeline.
+7. Gap detection (CORE-002) is deterministic; Claude never decides whether a gap exists.
+8. Claude interpretation (AI-001) can never change facts, counts, or identity fields — only produces `what_we_observed` / `what_this_suggests` / `what_to_consider`.
+9. The PDF renderer consumes `reports.canonical_report_json` only — no direct queries to component_results/grouped_gaps/checklist_items/provider APIs.
+10. The `audit-reports` Supabase Storage bucket remains private; downloads only via signed URL.
+11. Shared access only — no full authentication system.
+12. No overall score, severity, or priority anywhere in the product.
+
+## Latest Test Status
+
+- **COMP-005:** full regression 200/200 PASS
+- **CORE-002:** full regression 238/238 PASS
+- **AI-001:** full regression 269/269 PASS
+- **REPORT-001:** full regression 304/304 PASS
+- **PDF-001:** full regression 329/329 PASS; real 8-page PDF generated, uploaded, downloaded, manually inspected
+- **UI-001:** new UI/orchestration tests 34/34 PASS; full regression 364/364 PASS; typecheck/lint/build PASS; real end-to-end audit PASS (38.4s); PDF download PASS
 
 ## Latest Commits
-- COMP-002: (pending — see commit created by this task)
-- COMP-001: `fdf0ed56af692741dc178ddf99cfba9be4419734` — "feat: add brand recognition audit component"
-- CORE-001: `cc9f2f01706637aa2b13a44c28adc1470d330da3` — "feat: add audit creation and checklist engine"
-- INFRA-002: `4e64b70737797baa32b4ed8b95ff161300bb2931` — "chore: link Trigger.dev project ref"
-- INFRA-001: `f9c4a5d3011b64e6b9d6c02e8646b0a1353c40e3` — "chore: initialize AI-Clinic foundation"
+
+- CORE-002: `a7efa83`
+- AI-001: `70ee9f2`
+- REPORT-001: `1b967cf`
+- PDF-001: `f7088dc`
+- UI-001: `ba0100d`
+
+Latest/current commit: `ba0100d`
+
+## Deployment Risk — Important
+
+**Trigger.dev production deployment has NOT yet been verified.**
+
+- Local `npx trigger.dev dev` works successfully.
+- `trigger.config.ts` now includes the Playwright build setup (`build.external` + the official `playwright()` build extension) required to avoid a `playwright-core` / `chromium-bidi` bundling failure that otherwise blocks the worker from building at all.
+- A separate `regenerate-pdf` Trigger.dev task was added so Playwright never runs inside a Vercel Server Action.
+
+Still required during DEPLOY-001:
+- Run a production Trigger.dev deployment (`trigger.dev deploy`).
+- Verify the worker builds successfully in that environment.
+- Execute a real production task.
+- Verify Playwright PDF generation in the deployed Trigger.dev environment.
+
+This is **not** blocking QA-001. It is a DEPLOY-001 acceptance requirement.
+
+## Vercel Status
+
+Not linked, not deployed. No `.vercel` directory, no `vercel.json` in the repository. Production is **not** live.
+
+## GitHub Status
+
+- Local git: initialized, working tree clean, branch `main`.
+- Remote: **not configured** (`git remote -v` returns nothing).
+- Latest commit: `ba0100d` — "feat: add AI-Clinic MVP interface and audit orchestration"
+
+## Security Notes
+
+Some development API keys/tokens were exposed during tooling/debugging sessions. Rotation is required before production/final handoff. This is currently a pre-production security task, not a QA blocker.
 
 ## Pending Work
 
-**Next:** COMP-003 — Social Profiles
+Only two main build stages remain:
 
-**Then:** COMP-004 — Directories, COMP-005 — Technical Accessibility, CORE-002, AI-001, REPORT-001, PDF-001, UI-001, QA-001, DEPLOY-001
-
-## Security / Non-Blocking Notes
-- Development keys exposed during tooling should be rotated before production.
-- This is not currently blocking MVP implementation.
+1. **QA-001** — real functional QA, regression, UI smoke, one clean end-to-end audit, failure-state sanity, production-readiness checks. No polishing rabbit holes.
+2. **DEPLOY-001** — GitHub remote (still missing), Vercel, environment variables, Trigger.dev production deploy, production task execution, production PDF, production smoke audit.
 
 ## Important Files
 - `AI-Clinic-RESTART.md`
@@ -91,13 +167,13 @@ Do not change these during restart preparation.
 - `AI-Clinic-Master-Planning-Final-QA.md`
 - `AI-Clinic-Claude-Design-Handoff-Final-QA.md`
 
-## Fresh Chat Instructions
+## Fresh Chat Startup
 
-When starting a new Claude Code chat:
+When starting a fresh Claude Code chat:
 
 1. Read `AI-Clinic-RESTART.md` first.
-2. Briefly report: current phase, last completed task, next task, blockers.
+2. Briefly report: current phase, last completed task, next task, blockers, deployment risk.
 3. Do not reread the full project by default.
-4. Read only the relevant canonical sections needed for COMP-003.
-5. If RESTART conflicts with canonical docs, flag the conflict.
-6. Do not start COMP-003 until the user explicitly authorizes it.
+4. Read only the canonical sections relevant to QA-001.
+5. Do not start QA-001 until explicitly authorized by the user.
+6. Preserve the same-day MVP shipping priority: working live product > optional polish.
