@@ -1,5 +1,5 @@
 import { getSupabaseServerClient } from "../server";
-import type { Database } from "../database.types";
+import type { Database, GroupedGapValidationStatus, Json } from "../database.types";
 
 export type GroupedGapRow = Database["public"]["Tables"]["grouped_gaps"]["Row"];
 export type GroupedGapInsert = Database["public"]["Tables"]["grouped_gaps"]["Insert"];
@@ -60,4 +60,29 @@ export async function replaceGroupedGapsForAudit(
 ): Promise<GroupedGapRow[]> {
   await deleteGroupedGapsByAuditId(auditId);
   return createGroupedGaps(rows);
+}
+
+/**
+ * AI-001's only write path: updates ONLY interpretation_json and
+ * validation_status on an existing row, addressed by its own primary key
+ * -- never gap_key/component_name/gap_type/title/affected_checks_json/
+ * evidence_json/deterministic_reason, which this function's signature
+ * makes it impossible to send in the first place.
+ */
+export async function updateGroupedGapInterpretation(
+  id: string,
+  patch: { interpretation_json: Json | null; validation_status: GroupedGapValidationStatus }
+): Promise<GroupedGapRow> {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("grouped_gaps")
+    .update(patch)
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(`updateGroupedGapInterpretation failed: ${error.message}`);
+  }
+  return data;
 }
