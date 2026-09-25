@@ -1,0 +1,169 @@
+.page {
+  padding: var(--space-6) 0 var(--space-8);
+}
+
+.topCard {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-5);
+  margin-bottom: var(--space-5);
+}
+
+.company {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.meta {
+  color: var(--color-muted);
+  font-size: 13px;
+  margin-top: var(--space-1);
+}
+
+.statusRow {
+  margin-top: var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.statusLabel {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.stepsCard {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-5);
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.step:last-child {
+  border-bottom: none;
+}
+
+.stepDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.stepLabel {
+  flex: 1;
+  font-size: 14px;
+}
+
+.stepState {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-muted);
+}
+
+.pulse {
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.completedBlock {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-6);
+  text-align: center;
+  margin-top: var(--space-5);
+}
+
+.completedTitle {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--color-good);
+}
+
+.filename {
+  color: var(--color-muted);
+  font-size: 13px;
+  margin-top: var(--space-2);
+}
+
+.actions {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+  flex-wrap: wrap;
+}
+
+.primaryButton {
+  background: var(--color-primary);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.secondaryButton {
+  background: none;
+  border: 1px solid var(--color-border);
+  color: var(--color-navy);
+  border-radius: var(--radius-sm);
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.issueBlock {
+  margin-top: var(--space-5);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+}
+
+.issueTitle {
+  font-weight: 700;
+  color: var(--color-attention);
+  margin-bottom: var(--space-2);
+}
+
+.issueTitleDanger {
+  color: var(--color-danger);
+}
+
+.reasonList {
+  font-size: 13px;
+  color: var(--color-navy);
+  padding-left: var(--space-4);
+  margin-top: var(--space-2);
+}

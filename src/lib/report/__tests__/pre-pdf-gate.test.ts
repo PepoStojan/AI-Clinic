@@ -139,6 +139,25 @@ describe("runPreFlightChecklist", () => {
     expect(gate.blockingReasons.some((r) => /unavailable evidence/i.test(r))).toBe(true);
   });
 
+  it("live regression (2026-09-25, real Stripe run): a legitimate connected='N/A' on an Unverified social profile must never be mistaken for unavailable-evidence leakage", () => {
+    // Real data from a live audit: social_profiles' own `connected: "N/A"`
+    // is a CORRECT value for a platform whose profile itself is
+    // Unverified (connection can't be evaluated). This must never block
+    // the gate -- only the row's own status field matters, not every
+    // field in the object.
+    const { gate } = assembleAndGate({
+      groupedGaps: [
+        gapRow({
+          gap_key: "social_profiles:not_found",
+          affected_checks_json: [{ platform: "facebook", profileStatus: "Unverified", connected: "N/A" }],
+          evidence_json: [{ platform: "facebook", profileStatus: "Unverified", evidence: "We found a possible profile but could not confidently confirm it belongs to the audited company." }],
+        }),
+      ],
+    });
+    expect(gate.readyForPdf).toBe(true);
+    expect(gate.blockingReasons).toEqual([]);
+  });
+
   it("6. a grouped gap missing evidence -> false", () => {
     const { gate } = assembleAndGate({ groupedGaps: [gapRow({ evidence_json: [] })] });
     expect(gate.readyForPdf).toBe(false);

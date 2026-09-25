@@ -18,9 +18,31 @@ const REQUIRED_COMPONENT_KEYS = [
 
 const UNAVAILABLE_EVIDENCE_MARKERS = ["n/a", "could not verify", "cannot verify", "no result"];
 
-function containsUnavailableMarker(value: unknown): boolean {
-  const text = JSON.stringify(value).toLowerCase();
-  return UNAVAILABLE_EVIDENCE_MARKERS.some((m) => text.includes(m));
+// The canonical classification field per component -- the one value that
+// actually determines whether a row is confirmed-gap-worthy. Deliberately
+// NOT a blind scan of the whole affected_checks/evidence object: fields
+// like social_profiles' own `connected: "N/A"` are a legitimate, correct
+// value (connection genuinely can't be evaluated for an Unverified/Not
+// Found profile) and must never be mistaken for the gap's own status
+// leaking unavailable evidence -- a live audit run caught exactly this
+// false positive before this fix.
+const STATUS_FIELD_NAMES = ["profileStatus", "status", "recognitionStatus", "mentionClass", "entityStatus"];
+
+function entryStatusLeaksUnavailable(entry: unknown): boolean {
+  if (typeof entry !== "object" || entry === null) return false;
+  const record = entry as Record<string, unknown>;
+  for (const field of STATUS_FIELD_NAMES) {
+    const value = record[field];
+    if (typeof value !== "string") continue;
+    const lowered = value.toLowerCase();
+    if (UNAVAILABLE_EVIDENCE_MARKERS.some((m) => lowered.includes(m))) return true;
+  }
+  return false;
+}
+
+function containsUnavailableMarker(entries: unknown): boolean {
+  if (!Array.isArray(entries)) return false;
+  return entries.some(entryStatusLeaksUnavailable);
 }
 
 function targetsToChecklistInputs(targets: AuditTargetRow[]): ChecklistTargetInput[] {

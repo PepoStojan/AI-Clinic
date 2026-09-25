@@ -1,8 +1,9 @@
 import { getSupabaseServerClient } from "../server";
-import type { Database } from "../database.types";
+import type { AuditStatus, Database } from "../database.types";
 
 export type AuditRow = Database["public"]["Tables"]["audits"]["Row"];
 export type AuditInsert = Database["public"]["Tables"]["audits"]["Insert"];
+export type AuditUpdate = Database["public"]["Tables"]["audits"]["Update"];
 
 export async function createAudit(input: AuditInsert): Promise<AuditRow> {
   const supabase = getSupabaseServerClient();
@@ -65,6 +66,41 @@ export async function getAuditById(id: string): Promise<AuditRow | null> {
 
   if (error) {
     throw new Error(`getAuditById failed: ${error.message}`);
+  }
+  return data;
+}
+
+/**
+ * UI-001's only status-transition write path -- always sets `status`
+ * (plus whatever extra fields the caller passes, e.g. completed_at) by
+ * audit id. Never invents/guesses a status; every call site names the
+ * exact target status explicitly.
+ */
+export async function updateAuditStatus(
+  id: string,
+  status: AuditStatus,
+  extra: Omit<AuditUpdate, "id" | "status"> = {}
+): Promise<AuditRow> {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("audits")
+    .update({ status, ...extra })
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(`updateAuditStatus failed: ${error.message}`);
+  }
+  return data;
+}
+
+export async function listAudits(): Promise<AuditRow[]> {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase.from("audits").select().order("created_at", { ascending: false });
+
+  if (error) {
+    throw new Error(`listAudits failed: ${error.message}`);
   }
   return data;
 }
