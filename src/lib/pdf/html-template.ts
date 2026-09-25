@@ -126,20 +126,60 @@ function card(title: string, bodyHtml: string): string {
 
 // -- Cover -------------------------------------------------------------
 
+// SmartClick-style hero cover (PDF-COVER-003). Decorative composition is
+// pure CSS (no images/SVGs) so PDF generation keeps zero external asset
+// dependencies -- the "AI Recognition / Prompt Visibility / Crawler Access
+// / Brand Presence" labels below are static decoration, never derived from
+// report data, and must never be read as real findings/scores.
 function renderCover(report: CanonicalReport): string {
   const { audit_info } = report;
   return `
     <section class="page cover">
-      <div class="cover-brand">AI-Clinic</div>
-      <div class="cover-secondary">Developed by smartclick.agency</div>
-      <div class="cover-divider"></div>
-      <div class="cover-title">AI Visibility Audit</div>
-      <div class="cover-tagline">Understanding how AI systems recognize, reference, and access your brand.</div>
-      <div class="cover-company">${escapeHtml(audit_info.company_name)}</div>
-      <div class="cover-website">${escapeHtml(audit_info.website_url)}</div>
-      <div class="cover-meta">
-        <div>Audit date · ${formatDate(audit_info.created_at)}</div>
-        <div>Audit code · ${escapeHtml(audit_info.audit_code)}</div>
+      <div class="cover-grid"></div>
+      <div class="cover-glow"></div>
+      <div class="cover-top">
+        <div class="cover-brand">AI-Clinic</div>
+        <div class="cover-secondary">Developed by smartclick.agency</div>
+      </div>
+      <div class="cover-body">
+        <div class="cover-left">
+          <div class="cover-title">AI Visibility Audit</div>
+          <div class="cover-tagline">Understanding how AI systems recognize, reference, and access your brand.</div>
+          <div class="cover-client">
+            <div class="cover-company">${escapeHtml(audit_info.company_name)}</div>
+            <div class="cover-website">${escapeHtml(audit_info.website_url)}</div>
+          </div>
+        </div>
+        <div class="cover-right">
+          <div class="cover-card cover-card-a">
+            <span class="cover-card-dot"></span>
+            <span class="cover-card-label">AI Recognition</span>
+          </div>
+          <div class="cover-card cover-card-b">
+            <span class="cover-card-dot cover-card-dot-accent"></span>
+            <span class="cover-card-label">Prompt Visibility</span>
+          </div>
+          <div class="cover-card cover-card-c">
+            <span class="cover-card-dot"></span>
+            <span class="cover-card-label">Crawler Access</span>
+          </div>
+          <div class="cover-card cover-card-d">
+            <span class="cover-card-dot"></span>
+            <span class="cover-card-label">Brand Presence</span>
+          </div>
+          <svg class="cover-connectors" viewBox="0 0 320 360" preserveAspectRatio="none">
+            <line x1="120" y1="70" x2="230" y2="150" />
+            <line x1="230" y1="150" x2="90" y2="240" />
+            <line x1="90" y1="240" x2="220" y2="310" />
+          </svg>
+        </div>
+      </div>
+      <div class="cover-footer">
+        <div class="cover-divider"></div>
+        <div class="cover-meta">
+          <div>Audit date · ${formatDate(audit_info.created_at)}</div>
+          <div>Audit code · ${escapeHtml(audit_info.audit_code)}</div>
+        </div>
       </div>
     </section>`;
 }
@@ -574,25 +614,89 @@ const STYLES = `
   h3 { font-size: 13px; font-weight: 600; margin: 0 0 8px; color: ${DARK_NAVY}; }
   .wrap { overflow-wrap: break-word; word-break: break-word; }
 
-  /* -- Cover -- */
+  /* -- Cover (PDF-COVER-003, SmartClick-style hero) -- */
   .cover {
+    position: relative;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
     height: 100vh;
-    text-align: center;
-    background: linear-gradient(180deg, #FFFFFF 0%, ${NEUTRAL_BG} 100%);
+    padding: 0;
+    overflow: hidden;
+    text-align: left;
+    color: #FFFFFF;
+    background: linear-gradient(135deg, #2289F5 0%, #1B6FD1 100%);
   }
-  .cover-brand { font-size: 28px; font-weight: 700; color: ${DARK_NAVY}; letter-spacing: 0.3px; }
-  .cover-secondary { font-size: 11px; color: ${MUTED_TEXT}; margin-top: 4px; }
-  .cover-divider { width: 36px; height: 1px; background: ${NEUTRAL_BORDER}; margin-top: 28px; }
-  .cover-title { font-size: 24px; font-weight: 600; color: ${DARK_NAVY}; margin-top: 28px; }
-  .cover-tagline { font-size: 13px; color: ${MUTED_TEXT}; margin-top: 10px; max-width: 340px; line-height: 1.6; }
-  .cover-company { font-size: 28px; font-weight: 700; margin-top: 44px; }
-  .cover-website { font-size: 13px; color: ${MUTED_TEXT}; margin-top: 6px; overflow-wrap: break-word; max-width: 80%; }
-  .cover-meta { margin-top: 44px; font-size: 11.5px; color: ${LABEL_GRAY}; }
-  .cover-meta div { margin-top: 4px; }
+  .cover-grid {
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(rgba(255,255,255,0.14) 1px, transparent 1px);
+    background-size: 22px 22px;
+    opacity: 0.5;
+  }
+  .cover-glow {
+    position: absolute;
+    top: -120px;
+    right: -140px;
+    width: 520px;
+    height: 520px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0) 70%);
+  }
+  .cover-top {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    padding: 40px 52px 0;
+  }
+  .cover-brand { font-size: 18px; font-weight: 700; letter-spacing: 0.3px; color: #FFFFFF; }
+  .cover-secondary { font-size: 10.5px; color: rgba(255,255,255,0.75); margin-top: 3px; }
+  .cover-body {
+    position: relative;
+    z-index: 2;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 32px;
+    padding: 0 52px;
+  }
+  .cover-left { flex: 1 1 56%; }
+  .cover-title { font-size: 42px; font-weight: 700; line-height: 1.12; letter-spacing: -0.3px; color: #FFFFFF; }
+  .cover-tagline { font-size: 15px; color: rgba(255,255,255,0.8); margin-top: 16px; max-width: 65%; line-height: 1.6; }
+  .cover-client { margin-top: 52px; }
+  .cover-company { font-size: 26px; font-weight: 700; color: #FFFFFF; }
+  .cover-website { font-size: 13px; color: rgba(255,255,255,0.75); margin-top: 6px; overflow-wrap: break-word; max-width: 90%; }
+  .cover-right { position: relative; flex: 1 1 44%; height: 360px; }
+  .cover-connectors { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .cover-connectors line { stroke: rgba(255,255,255,0.3); stroke-width: 1; }
+  .cover-card {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 13px 18px;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.25);
+    box-shadow: 0 12px 28px rgba(15,42,61,0.18);
+    font-size: 12px;
+    font-weight: 600;
+    color: #FFFFFF;
+    white-space: nowrap;
+  }
+  .cover-card-dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.85); flex-shrink: 0; }
+  .cover-card-dot-accent { background: #FFD84D; }
+  .cover-card-a { top: 10px; left: 40px; }
+  .cover-card-b { top: 108px; left: 190px; }
+  .cover-card-c { top: 208px; left: 20px; }
+  .cover-card-d { top: 288px; left: 170px; }
+  .cover-footer {
+    position: relative;
+    z-index: 2;
+    padding: 0 52px 40px;
+  }
+  .cover-divider { width: 100%; height: 1px; background: rgba(255,255,255,0.25); margin-bottom: 14px; }
+  .cover-meta { display: flex; gap: 28px; font-size: 11px; color: rgba(255,255,255,0.7); }
 
   /* -- Stat cards (Executive Summary) -- */
   .stat-grid { display: flex; gap: 14px; flex-wrap: wrap; }
