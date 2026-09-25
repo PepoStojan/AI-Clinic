@@ -3,6 +3,50 @@
   max-width: 800px;
 }
 
+.navRow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: var(--space-4);
+}
+
+.backLink {
+  font-size: 13px;
+  color: var(--color-muted);
+  width: fit-content;
+}
+
+.backLink:hover {
+  color: var(--color-navy);
+}
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--color-label);
+}
+
+.breadcrumbLink {
+  color: var(--color-label);
+}
+
+.breadcrumbLink:hover {
+  color: var(--color-navy);
+}
+
+.breadcrumbSeparator {
+  color: var(--color-border);
+}
+
+.breadcrumbCurrent {
+  color: var(--color-navy);
+  font-weight: 500;
+  overflow-wrap: break-word;
+}
+
 .topCard {
   display: flex;
   align-items: flex-start;

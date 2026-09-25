@@ -84,6 +84,19 @@ export function AuditDetailClient({ initial }: { initial: StatusSnapshot }) {
 
   return (
     <>
+      <div className={styles.navRow}>
+        <Link href="/audits" className={styles.backLink}>
+          ← Back to Audits
+        </Link>
+        <div className={styles.breadcrumb}>
+          <Link href="/audits" className={styles.breadcrumbLink}>
+            Audits
+          </Link>
+          <span className={styles.breadcrumbSeparator}>/</span>
+          <span className={styles.breadcrumbCurrent}>{audit.companyName}</span>
+        </div>
+      </div>
+
       <div className={styles.topCard}>
         <div className={styles.company}>{audit.companyName}</div>
         <div className={styles.meta}>
