@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, useTransition } from "react";
 import Link from "next/link";
+import { DotLottieReact } from "@lottiefiles/dotlottie-react";
 import { auditStatusColor, auditStatusLabel } from "@/lib/ui/status-colors";
 import { isTerminalAuditStatus, type ProgressStep } from "@/lib/ui/audit-progress";
 import { retryAuditAction, retryQueueAction, regeneratePdfAction } from "../actions";
@@ -142,8 +143,14 @@ export function AuditDetailClient({ initial }: { initial: StatusSnapshot }) {
           </div>
         </div>
       ) : (
-        <div className={styles.stepsCard}>
-          {steps.map((step) => (
+        <>
+          {isRunning && (
+            <div className={styles.progressAnimation}>
+              <DotLottieReact src="/animations/ai-audit-flow.lottie" autoplay loop />
+            </div>
+          )}
+          <div className={styles.stepsCard}>
+            {steps.map((step) => (
             <div className={styles.step} key={step.label}>
               <span className={styles.stepIcon} style={{ background: stepIconBg(step.state) }}>
                 {step.state === "Completed" && (
@@ -169,8 +176,9 @@ export function AuditDetailClient({ initial }: { initial: StatusSnapshot }) {
               <span className={styles.stepLabel}>{step.label}</span>
               <span className={styles.stepState}>{step.state}</span>
             </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </>
       )}
 
       {(audit.status === "BLOCKED" || audit.status === "PARTIAL" || audit.status === "FAILED") && (
