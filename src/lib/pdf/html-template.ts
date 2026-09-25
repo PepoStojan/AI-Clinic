@@ -13,6 +13,14 @@ import {
   CLAUDE_LOGO_DATA_URI,
   GEMINI_LOGO_DATA_URI,
   GOOGLE_AI_LOGO_DATA_URI,
+  LINKEDIN_LOGO_DATA_URI,
+  FACEBOOK_LOGO_DATA_URI,
+  INSTAGRAM_LOGO_DATA_URI,
+  X_TWITTER_LOGO_DATA_URI,
+  YOUTUBE_LOGO_DATA_URI,
+  TIKTOK_LOGO_DATA_URI,
+  THREADS_LOGO_DATA_URI,
+  REDDIT_LOGO_DATA_URI,
 } from "./logo-assets";
 
 const BRAND_BLUE = "#28A8DF";
@@ -342,6 +350,28 @@ function platformName(raw: string): string {
     .join(" ");
 }
 
+// Social Profiles platform -> logo lookup -- presentation-only, keyed by
+// the exact platform keys the social_profiles component already produces.
+// Never used for Third-Party Listings, which is a different platform set.
+const SOCIAL_PLATFORM_LOGOS: Record<string, string> = {
+  linkedin: LINKEDIN_LOGO_DATA_URI,
+  facebook: FACEBOOK_LOGO_DATA_URI,
+  instagram: INSTAGRAM_LOGO_DATA_URI,
+  x_twitter: X_TWITTER_LOGO_DATA_URI,
+  youtube: YOUTUBE_LOGO_DATA_URI,
+  tiktok: TIKTOK_LOGO_DATA_URI,
+  threads: THREADS_LOGO_DATA_URI,
+  reddit: REDDIT_LOGO_DATA_URI,
+};
+
+function socialPlatformLogo(platformKey: string): string {
+  const logo = SOCIAL_PLATFORM_LOGOS[platformKey.toLowerCase()];
+  if (logo) {
+    return `<img class="platform-logo" src="${logo}" alt="${escapeHtml(platformName(platformKey))}" />`;
+  }
+  return `<div class="platform-logo-fallback">${escapeHtml(platformName(platformKey).slice(0, 1))}</div>`;
+}
+
 function renderSocialAndDirectories(report: CanonicalReport): string {
   const socialFindings = report.component_results.social_profiles?.findings as
     | { platforms?: SocialFinding[] }
@@ -355,7 +385,7 @@ function renderSocialAndDirectories(report: CanonicalReport): string {
       (p) => `
       <div class="matrix-item">
         <div class="matrix-row-3">
-          <div class="matrix-platform">${escapeHtml(platformName(p.platform))}</div>
+          <div class="matrix-platform">${socialPlatformLogo(p.platform)}${escapeHtml(platformName(p.platform))}</div>
           <div>${statusBadge(p.profileStatus)}</div>
           <div>${statusBadge(p.connected)}</div>
         </div>
@@ -635,7 +665,13 @@ const STYLES = `
   .matrix-head { background: ${NEUTRAL_BG}; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: ${LABEL_GRAY}; }
   .matrix-item { border-bottom: 1px solid ${NEUTRAL_BORDER_SUBTLE}; break-inside: avoid; }
   .matrix-item:last-child { border-bottom: none; }
-  .matrix-platform { font-size: 12px; font-weight: 500; color: ${DARK_NAVY}; }
+  .matrix-platform { font-size: 12px; font-weight: 500; color: ${DARK_NAVY}; display: flex; align-items: center; gap: 9px; }
+  .platform-logo { width: 18px; height: 18px; object-fit: contain; flex: none; }
+  .platform-logo-fallback {
+    width: 18px; height: 18px; border-radius: 50%; background: ${NEUTRAL_BG};
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9px; font-weight: 700; color: ${MUTED_TEXT}; flex: none;
+  }
   .matrix-url { padding: 0 16px 12px; margin-top: -2px; font-size: 10.5px; color: ${LABEL_GRAY}; }
 
   /* -- Directory listing cards -- */
