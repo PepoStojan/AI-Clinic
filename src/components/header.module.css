@@ -68,3 +68,14 @@
 .navPrimary:hover {
   background: var(--color-primary-hover);
 }
+
+.logoutButton {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.logoutButton:hover {
+  color: var(--color-navy);
+}

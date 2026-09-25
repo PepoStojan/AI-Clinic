@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { logoutAction } from "@/lib/auth/actions";
 import styles from "./header.module.css";
 
 export function Header() {
@@ -23,6 +24,11 @@ export function Header() {
           <Link href="/new-audit" className={isNewAudit ? styles.navPrimary : styles.navLink}>
             New Audit
           </Link>
+          <form action={logoutAction}>
+            <button type="submit" className={`${styles.navLink} ${styles.logoutButton}`}>
+              Logout
+            </button>
+          </form>
         </nav>
       </div>
     </header>
