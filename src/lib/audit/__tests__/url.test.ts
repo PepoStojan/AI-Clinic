@@ -1,5 +1,31 @@
 import { describe, expect, it } from "vitest";
-import { extractRegisteredDomain, isValidHttpUrl, normalizeUrl } from "../url";
+import { ensureProtocol, extractRegisteredDomain, isValidHttpUrl, normalizeUrl } from "../url";
+
+describe("ensureProtocol", () => {
+  it("prepends https:// to a bare domain", () => {
+    expect(ensureProtocol("ocuco.com")).toBe("https://ocuco.com");
+  });
+
+  it("prepends https:// to a bare www domain, preserving www", () => {
+    expect(ensureProtocol("www.ocuco.com")).toBe("https://www.ocuco.com");
+  });
+
+  it("leaves an existing https:// URL untouched", () => {
+    expect(ensureProtocol("https://ocuco.com")).toBe("https://ocuco.com");
+  });
+
+  it("leaves an existing https:// www URL untouched", () => {
+    expect(ensureProtocol("https://www.ocuco.com")).toBe("https://www.ocuco.com");
+  });
+
+  it("trims surrounding whitespace before checking for a scheme", () => {
+    expect(ensureProtocol("  ocuco.com  ")).toBe("https://ocuco.com");
+  });
+
+  it("does not add a scheme to a non-http scheme like ftp://", () => {
+    expect(ensureProtocol("ftp://ocuco.com")).toBe("ftp://ocuco.com");
+  });
+});
 
 describe("isValidHttpUrl", () => {
   it("accepts http/https URLs", () => {

@@ -1,4 +1,4 @@
-import { extractRegisteredDomain, isValidHttpUrl, normalizeUrl } from "./url";
+import { ensureProtocol, extractRegisteredDomain, isValidHttpUrl, normalizeUrl } from "./url";
 
 export interface AdditionalTargetInput {
   name?: string;
@@ -65,7 +65,7 @@ export function validateAuditInput(input: AuditCreationInput): ValidatedAuditInp
   const lastName = input.lastName?.trim() ?? "";
   const email = input.email?.trim() ?? "";
   const companyName = input.companyName?.trim() ?? "";
-  const websiteUrlRaw = input.websiteUrl?.trim() ?? "";
+  const websiteUrlRaw = ensureProtocol(input.websiteUrl?.trim() ?? "");
 
   if (!firstName) issues.push("First name is required.");
   if (!lastName) issues.push("Last name is required.");
@@ -93,7 +93,7 @@ export function validateAuditInput(input: AuditCreationInput): ValidatedAuditInp
   const droppedDuplicateTargetUrls: string[] = [];
 
   (input.additionalTargets ?? []).forEach((target, index) => {
-    const rawUrl = target.url?.trim() ?? "";
+    const rawUrl = ensureProtocol(target.url?.trim() ?? "");
     if (!rawUrl || !isValidHttpUrl(rawUrl)) {
       issues.push(`Additional target ${index + 1}: a valid URL is required.`);
       return;

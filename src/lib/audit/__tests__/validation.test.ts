@@ -99,4 +99,47 @@ describe("validateAuditInput", () => {
     expect(result.additionalTargets).toHaveLength(1);
     expect(result.droppedDuplicateTargetUrls).toHaveLength(1);
   });
+
+  it("accepts a bare domain website URL and normalizes it to https://", () => {
+    const result = validateAuditInput({ ...baseInput, websiteUrl: "ocuco.com" });
+    expect(result.websiteUrl).toBe("https://ocuco.com/");
+    expect(result.registeredDomain).toBe("ocuco.com");
+  });
+
+  it("accepts a bare www domain website URL, preserving www", () => {
+    const result = validateAuditInput({ ...baseInput, websiteUrl: "www.ocuco.com" });
+    expect(result.websiteUrl).toBe("https://www.ocuco.com/");
+    expect(result.registeredDomain).toBe("ocuco.com");
+  });
+
+  it("accepts an already-fully-qualified https URL unchanged", () => {
+    const result = validateAuditInput({ ...baseInput, websiteUrl: "https://ocuco.com" });
+    expect(result.websiteUrl).toBe("https://ocuco.com/");
+  });
+
+  it("trims whitespace around the website URL before normalizing", () => {
+    const result = validateAuditInput({ ...baseInput, websiteUrl: "   ocuco.com   " });
+    expect(result.websiteUrl).toBe("https://ocuco.com/");
+  });
+
+  it("rejects invalid text as a website URL", () => {
+    expect(() => validateAuditInput({ ...baseInput, websiteUrl: "not a url" })).toThrow(
+      AuditValidationError
+    );
+  });
+
+  it("rejects an ftp:// website URL", () => {
+    expect(() => validateAuditInput({ ...baseInput, websiteUrl: "ftp://ocuco.com" })).toThrow(
+      AuditValidationError
+    );
+  });
+
+  it("normalizes an additional target's bare domain URL", () => {
+    const result = validateAuditInput({
+      ...baseInput,
+      additionalTargets: [{ url: "www.ocuco.com/pricing", prompts: [] }],
+    });
+    expect(result.additionalTargets).toHaveLength(1);
+    expect(result.additionalTargets[0].url).toBe("https://www.ocuco.com/pricing");
+  });
 });

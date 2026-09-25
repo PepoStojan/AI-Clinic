@@ -133,8 +133,8 @@ export function NewAuditForm() {
             <label className={styles.label}>Website URL</label>
             <input
               className={styles.input}
-              type="url"
-              placeholder="https://example.com"
+              type="text"
+              placeholder="example.com"
               value={websiteUrl}
               onChange={(e) => setWebsiteUrl(e.target.value)}
               required
@@ -194,7 +194,8 @@ export function NewAuditForm() {
                     <label className={styles.label}>Page URL</label>
                     <input
                       className={styles.input}
-                      type="url"
+                      type="text"
+                      placeholder="example.com/pricing"
                       value={target.url}
                       onChange={(e) => updateTarget(target.key, { url: e.target.value })}
                     />
