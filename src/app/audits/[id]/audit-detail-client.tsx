@@ -121,10 +121,27 @@ export function AuditDetailClient({ initial }: { initial: StatusSnapshot }) {
         <div className={styles.stepsCard}>
           {steps.map((step) => (
             <div className={styles.step} key={step.label}>
-              <span
-                className={`${styles.stepDot} ${step.state === "Running" ? styles.pulse : ""}`}
-                style={{ background: stepColor(step.state) }}
-              />
+              <span className={styles.stepIcon} style={{ background: stepIconBg(step.state) }}>
+                {step.state === "Completed" && (
+                  <span className={styles.stepCheck} style={{ color: stepColor(step.state) }}>
+                    ✓
+                  </span>
+                )}
+                {step.state === "Running" && (
+                  <span
+                    className={`${styles.stepDot} ${styles.pulse}`}
+                    style={{ background: stepColor(step.state) }}
+                  />
+                )}
+                {step.state === "Failed" && (
+                  <span className={styles.stepBang} style={{ color: stepColor(step.state) }}>
+                    !
+                  </span>
+                )}
+                {(step.state === "Pending" || step.state === "N/A") && (
+                  <span className={styles.stepDotSmall} style={{ background: stepColor(step.state) }} />
+                )}
+              </span>
               <span className={styles.stepLabel}>{step.label}</span>
               <span className={styles.stepState}>{step.state}</span>
             </div>
@@ -179,5 +196,18 @@ function stepColor(state: string): string {
       return "#94A3B8";
     default:
       return "#CBD5E1";
+  }
+}
+
+function stepIconBg(state: string): string {
+  switch (state) {
+    case "Completed":
+      return "rgba(31, 157, 107, 0.12)";
+    case "Running":
+      return "rgba(40, 168, 223, 0.12)";
+    case "Failed":
+      return "rgba(217, 70, 59, 0.12)";
+    default:
+      return "#EEF0F3";
   }
 }

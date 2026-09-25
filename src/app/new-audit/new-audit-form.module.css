@@ -1,19 +1,20 @@
 .page {
-  padding: var(--space-6) 0 var(--space-8);
+  padding: 56px 0 96px;
+  max-width: 640px;
 }
 
 .title {
-  font-size: 22px;
+  font-size: 26px;
   font-weight: 600;
+  color: var(--color-navy);
   margin-bottom: var(--space-5);
 }
 
 .card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-sm);
-  padding: var(--space-5);
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
 }
 
 .grid {
@@ -31,40 +32,46 @@
 .field {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: var(--space-2);
   margin-bottom: var(--space-4);
 }
 
 .label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--color-muted);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-navy);
 }
 
 .input {
-  padding: 10px 12px;
+  padding: 12px 14px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-border);
   font-size: 14px;
+  outline: none;
+  transition: border-color 0.15s ease;
 }
 
 .input:focus {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 1px;
+  border-color: var(--color-primary);
 }
 
 .inputError {
-  border-color: var(--color-attention);
+  border-color: var(--color-danger);
 }
 
 .section {
   margin-top: var(--space-6);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--color-border-subtle);
 }
 
 .sectionTitle {
-  font-size: 14px;
+  font-size: 11px;
   font-weight: 600;
-  margin-bottom: var(--space-2);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-label);
+  margin-bottom: var(--space-4);
 }
 
 .promptRow {
@@ -80,35 +87,40 @@
 .iconButton {
   background: none;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   padding: 0 12px;
-  color: var(--color-muted);
+  color: var(--color-label);
   font-size: 13px;
 }
 
 .addButton {
-  background: none;
-  border: 1px dashed var(--color-border);
-  border-radius: var(--radius-sm);
-  color: var(--color-primary);
-  font-weight: 600;
+  align-self: flex-start;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xs);
+  color: var(--color-navy);
+  font-weight: 500;
   font-size: 13px;
-  padding: 8px 12px;
+  padding: 8px 14px;
   margin-top: var(--space-1);
 }
 
 .additionalTargetsIntro {
   font-size: 13px;
   color: var(--color-muted);
-  margin-bottom: var(--space-3);
+  margin-top: 4px;
+  margin-bottom: var(--space-4);
 }
 
 .targetCard {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  padding: 22px;
   margin-bottom: var(--space-3);
-  background: var(--color-bg);
+  background: #fbfbfc;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
 }
 
 .targetCollapsedRow {
@@ -116,38 +128,45 @@
   justify-content: space-between;
   align-items: center;
   cursor: pointer;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  padding: 16px 20px;
+  margin-bottom: var(--space-3);
+  background: var(--color-surface);
 }
 
 .targetSummary {
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 600;
   color: var(--color-navy);
 }
 
 .targetSummaryUrl {
-  color: var(--color-muted);
+  color: var(--color-label);
+  font-weight: 400;
 }
 
 .targetActions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
   gap: var(--space-2);
-  margin-top: var(--space-3);
 }
 
 .linkButton {
   background: none;
   border: none;
-  color: var(--color-muted);
-  font-size: 13px;
-  font-weight: 600;
+  color: var(--color-label);
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .linkButtonDanger {
-  color: var(--color-attention);
+  color: var(--color-label);
 }
 
 .error {
-  color: var(--color-attention);
+  color: var(--color-danger);
   font-size: 13px;
   margin-top: var(--space-3);
 }
@@ -155,7 +174,8 @@
 .footer {
   margin-top: var(--space-6);
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
+  gap: var(--space-3);
 }
 
 .submitButton {
@@ -163,10 +183,14 @@
   color: #ffffff;
   border: none;
   border-radius: var(--radius-sm);
-  padding: 12px 22px;
+  padding: 14px 24px;
   font-size: 15px;
   font-weight: 600;
-  box-shadow: var(--shadow-sm);
+  transition: background 0.15s ease;
+}
+
+.submitButton:hover:not(:disabled) {
+  background: var(--color-primary-hover);
 }
 
 .submitButton:disabled {
