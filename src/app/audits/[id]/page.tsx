@@ -26,6 +26,8 @@ export default async function AuditDetailPage({ params }: { params: Promise<{ id
       auditCode: audit.audit_code,
       companyName: audit.company_name,
       websiteUrl: audit.website_url,
+      contactName: audit.contact_name,
+      contactEmail: audit.contact_email,
       status: audit.status,
       createdAt: audit.created_at,
       completedAt: audit.completed_at,

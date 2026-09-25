@@ -15,6 +15,8 @@ interface StatusSnapshot {
     auditCode: string;
     companyName: string;
     websiteUrl: string;
+    contactName: string;
+    contactEmail: string;
     status: string;
     createdAt: string;
     completedAt: string | null;
@@ -108,6 +110,28 @@ export function AuditDetailClient({ initial }: { initial: StatusSnapshot }) {
         <div className={styles.completedBlock}>
           <div className={styles.completedTitle}>Audit Complete</div>
           {report?.pdfFilename && <div className={styles.filename}>{report.pdfFilename}</div>}
+          <div className={styles.contactBlock}>
+            <div className={styles.contactRow}>
+              <span className={styles.contactLabel}>Contact name</span>
+              <span className={styles.contactValue}>{audit.contactName}</span>
+            </div>
+            <div className={styles.contactRow}>
+              <span className={styles.contactLabel}>Email</span>
+              <a className={styles.contactLink} href={`mailto:${audit.contactEmail}`}>
+                {audit.contactEmail}
+              </a>
+            </div>
+            <div className={styles.contactRow}>
+              <span className={styles.contactLabel}>Company</span>
+              <span className={styles.contactValue}>{audit.companyName}</span>
+            </div>
+            <div className={styles.contactRow}>
+              <span className={styles.contactLabel}>Website</span>
+              <a className={styles.contactLink} href={audit.websiteUrl} target="_blank" rel="noreferrer">
+                {audit.websiteUrl}
+              </a>
+            </div>
+          </div>
           <div className={styles.actions}>
             <a className={styles.primaryButton} href={`/api/audits/${audit.id}/pdf`} target="_blank" rel="noreferrer">
               Download PDF
