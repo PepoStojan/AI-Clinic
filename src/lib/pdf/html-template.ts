@@ -1,17 +1,27 @@
-// PDF-001: pure HTML/CSS template builder. Reads ONLY the canonical
-// report object (Build Spec section 25: "No database/business decisions
-// inside renderer") -- presentation only, no analysis, no reclassification.
-// No remote asset dependency (Google Fonts etc.) -- a close system-font
-// fallback stack is used instead, so PDF generation never depends on
-// network access.
+// PDF-001 / PDF-DESIGN-002: pure HTML/CSS template builder. Reads ONLY the
+// canonical report object (Build Spec section 25: "No database/business
+// decisions inside renderer") -- presentation only, no analysis, no
+// reclassification. No remote asset dependency (Google Fonts, provider
+// logo hotlinks, etc.) -- a close system-font fallback stack plus locally
+// embedded base64 logo assets (see logo-assets.ts) are used instead, so
+// PDF generation never depends on network access inside the Trigger.dev
+// Playwright environment.
 
 import type { CanonicalReport } from "../report/types";
+import {
+  CHATGPT_LOGO_DATA_URI,
+  CLAUDE_LOGO_DATA_URI,
+  GEMINI_LOGO_DATA_URI,
+  GOOGLE_AI_LOGO_DATA_URI,
+} from "./logo-assets";
 
 const BRAND_BLUE = "#28A8DF";
 const DARK_NAVY = "#12263A";
 const NEUTRAL_BG = "#F5F7FA";
 const NEUTRAL_BORDER = "#E2E8F0";
+const NEUTRAL_BORDER_SUBTLE = "#ECEEF1";
 const MUTED_TEXT = "#64748B";
+const LABEL_GRAY = "#94A3B8";
 const GOOD = "#1F9D6B"; // restrained green -- never a bright/alarming red anywhere in this report
 const ATTENTION = "#C08A1E"; // restrained amber for a confirmed gap -- not red, no severity language
 const NEUTRAL_DOT = "#94A3B8"; // unavailable/neutral (No Result, N/A, Cannot Verify)
@@ -33,6 +43,33 @@ function formatDate(iso: string | null): string {
   } catch {
     return "—";
   }
+}
+
+// -- Provider display (logo + label) -- presentation-only lookup, never
+// changes the underlying provider key or any classification/status value.
+interface ProviderDisplay {
+  label: string;
+  logo: string | null;
+}
+
+const PROVIDER_DISPLAY: Record<string, ProviderDisplay> = {
+  openai: { label: "ChatGPT", logo: CHATGPT_LOGO_DATA_URI },
+  chatgpt: { label: "ChatGPT", logo: CHATGPT_LOGO_DATA_URI },
+  claude: { label: "Claude", logo: CLAUDE_LOGO_DATA_URI },
+  gemini: { label: "Gemini", logo: GEMINI_LOGO_DATA_URI },
+  google: { label: "Google AI", logo: GOOGLE_AI_LOGO_DATA_URI },
+  google_ai: { label: "Google AI", logo: GOOGLE_AI_LOGO_DATA_URI },
+};
+
+function providerDisplay(providerKey: string): ProviderDisplay {
+  return PROVIDER_DISPLAY[providerKey.toLowerCase()] ?? { label: providerKey, logo: null };
+}
+
+function providerLogo(display: ProviderDisplay): string {
+  if (display.logo) {
+    return `<img class="provider-logo" src="${display.logo}" alt="${escapeHtml(display.label)}" />`;
+  }
+  return `<div class="provider-logo-fallback">${escapeHtml(display.label.slice(0, 1))}</div>`;
 }
 
 // Every canonical status string this report ever displays, mapped to one
@@ -62,10 +99,17 @@ function statusDotColor(status: string): string {
   return ATTENTION; // everything else is a confirmed gap-shaped status (Blocked, Not Found (platform), Ambiguous, ...)
 }
 
+function tintFor(color: string): string {
+  if (color === GOOD) return "rgba(31,157,107,0.12)";
+  if (color === ATTENTION) return "rgba(192,138,30,0.12)";
+  return "#EEF0F3";
+}
+
 function statusBadge(status: string | null | undefined, colorOverride?: string): string {
   const label = status ?? "—";
   const color = colorOverride ?? statusDotColor(label);
-  return `<span class="badge"><span class="dot" style="background:${color}"></span>${escapeHtml(label)}</span>`;
+  const bg = tintFor(color);
+  return `<span class="badge" style="background:${bg}"><span class="dot" style="background:${color}"></span>${escapeHtml(label)}</span>`;
 }
 
 function card(title: string, bodyHtml: string): string {
@@ -80,44 +124,57 @@ function renderCover(report: CanonicalReport): string {
     <section class="page cover">
       <div class="cover-brand">AI-Clinic</div>
       <div class="cover-secondary">Developed by smartclick.agency</div>
+      <div class="cover-divider"></div>
       <div class="cover-title">AI Visibility Audit</div>
+      <div class="cover-tagline">Understanding how AI systems recognize, reference, and access your brand.</div>
       <div class="cover-company">${escapeHtml(audit_info.company_name)}</div>
       <div class="cover-website">${escapeHtml(audit_info.website_url)}</div>
       <div class="cover-meta">
-        <div>Audit date: ${formatDate(audit_info.created_at)}</div>
-        <div>Audit code: ${escapeHtml(audit_info.audit_code)}</div>
+        <div>Audit date · ${formatDate(audit_info.created_at)}</div>
+        <div>Audit code · ${escapeHtml(audit_info.audit_code)}</div>
       </div>
     </section>`;
 }
 
 // -- Executive Summary ---------------------------------------------------
 
+function statCard(label: string, value: string, sub?: string): string {
+  return `
+    <div class="stat-card">
+      <div class="stat-label">${escapeHtml(label)}</div>
+      <div class="stat-value">${escapeHtml(value)}</div>
+      ${sub ? `<div class="stat-sub">${escapeHtml(sub)}</div>` : ""}
+    </div>`;
+}
+
 function renderExecutiveSummary(report: CanonicalReport): string {
   const c = report.executive_fact_counts;
 
-  const brandCard = card(
+  const brandCard = statCard(
     "Brand Recognition",
-    `<div class="metric">${c.brand_recognition.recognized_by} of ${c.brand_recognition.total_providers} systems recognized the brand</div>
-     <div class="metric-sub">Accuracy confirmed: ${c.brand_recognition.accuracy_confirmed}</div>`
+    `${c.brand_recognition.recognized_by} / ${c.brand_recognition.total_providers}`,
+    `systems recognized the brand · ${c.brand_recognition.accuracy_confirmed} accuracy confirmed`
   );
 
-  const promptCard = card(
-    "Prompt Visibility",
+  const promptCard =
     c.prompt_visibility.visibility_percentage === null
-      ? `<div class="metric">Not enough valid checks to measure</div>`
-      : `<div class="metric">${c.prompt_visibility.visibility_percentage}% visibility</div>
-         <div class="metric-sub">${c.prompt_visibility.positive_checks} of ${c.prompt_visibility.valid_checks} valid checks positive</div>`
-  );
+      ? statCard("Prompt Visibility", "—", "Not enough valid checks to measure")
+      : statCard(
+          "Prompt Visibility",
+          `${c.prompt_visibility.visibility_percentage}%`,
+          `${c.prompt_visibility.positive_checks} of ${c.prompt_visibility.valid_checks} valid checks positive`
+        );
 
-  const socialCard = card(
+  const socialCard = statCard(
     "Social Profiles",
-    `<div class="metric">${c.social_profiles.profiles_found} of ${c.social_profiles.total_platforms} platforms found</div>
-     <div class="metric-sub">${c.social_profiles.profiles_connected} connected to the website</div>`
+    `${c.social_profiles.profiles_found} / ${c.social_profiles.total_platforms}`,
+    `platforms found · ${c.social_profiles.profiles_connected} connected to the website`
   );
 
-  const directoriesCard = card(
+  const directoriesCard = statCard(
     "Third-Party Listings",
-    `<div class="metric">${c.directories.listings_found} of ${c.directories.total_directories} directories found</div>`
+    `${c.directories.listings_found} / ${c.directories.total_directories}`,
+    "directories found"
   );
 
   // Exact wording rule: never imply universal access when any crawler is
@@ -127,17 +184,27 @@ function renderExecutiveSummary(report: CanonicalReport): string {
     t.blocked === 0 && t.restricted === 0 && t.cannot_verify === 0
       ? `All ${t.total_crawlers} audited crawlers are allowed`
       : `${t.allowed} allowed · ${t.restricted} restricted · ${t.blocked} blocked${t.cannot_verify > 0 ? ` · ${t.cannot_verify} could not verify` : ""}`;
-  const technicalCard = card("AI Crawler Accessibility", `<div class="metric">${escapeHtml(technicalHeadline)}</div>`);
+  const technicalCard = statCard("AI Crawler Accessibility", technicalHeadline);
 
   return `
     <section class="page">
-      <h2>Executive Summary</h2>
-      <div class="grid grid-3">
-        ${brandCard}${promptCard}${socialCard}${directoriesCard}${technicalCard}
+      <div class="section-eyebrow">Executive Summary</div>
+      <h2 class="section-heading">Where ${escapeHtml(report.audit_info.company_name)} stands with AI systems</h2>
+      <div class="stat-grid stat-grid-3">
+        ${brandCard}${promptCard}${socialCard}
       </div>
-      <div class="grid grid-2" style="margin-top:16px">
-        ${card("Confirmed Gaps", `<div class="metric">${c.confirmed_gaps_count}</div>`)}
-        ${card("Checks Unavailable", `<div class="metric">${c.checks_unavailable_count}</div>`)}
+      <div class="stat-grid stat-grid-2" style="margin-top:14px">
+        ${directoriesCard}${technicalCard}
+      </div>
+      <div class="highlight-row">
+        <div class="highlight-tile">
+          <div class="highlight-value">${c.confirmed_gaps_count}</div>
+          <div class="highlight-label">Confirmed Gaps</div>
+        </div>
+        <div class="highlight-tile">
+          <div class="highlight-value highlight-value-muted">${c.checks_unavailable_count}</div>
+          <div class="highlight-label">Checks Unavailable</div>
+        </div>
       </div>
     </section>`;
 }
@@ -157,25 +224,27 @@ function renderBrandRecognition(report: CanonicalReport): string {
     | undefined;
   const providers = findings?.providers ?? [];
 
-  const rows = providers
-    .map(
-      (p) => `
-      <tr>
-        <td>${escapeHtml(p.provider)}</td>
-        <td>${statusBadge(p.recognitionStatus)}</td>
-        <td class="wrap">${escapeHtml(p.evidence ?? "")}</td>
-        <td class="wrap">${escapeHtml(p.source ?? "")}</td>
-      </tr>`
-    )
+  const cards = providers
+    .map((p) => {
+      const display = providerDisplay(p.provider);
+      return `
+      <div class="br-card">
+        <div class="br-top">
+          ${providerLogo(display)}
+          <div class="br-name">${escapeHtml(display.label)}</div>
+          ${statusBadge(p.recognitionStatus)}
+        </div>
+        ${p.evidence ? `<div class="br-evidence wrap">${escapeHtml(p.evidence)}</div>` : ""}
+        ${p.source ? `<div class="br-source wrap">Source: ${escapeHtml(p.source)}</div>` : ""}
+      </div>`;
+    })
     .join("");
 
   return `
     <section class="page">
-      <h2>Brand Recognition</h2>
-      <table>
-        <thead><tr><th>System</th><th>Status</th><th>Evidence</th><th>Source</th></tr></thead>
-        <tbody>${rows || `<tr><td colspan="4" class="empty">No provider results available.</td></tr>`}</tbody>
-      </table>
+      <div class="section-eyebrow">Brand Recognition</div>
+      <h2 class="section-heading">Do AI systems know who you are</h2>
+      <div class="br-list">${cards || `<div class="empty-state">No provider results available.</div>`}</div>
     </section>`;
 }
 
@@ -196,28 +265,58 @@ function renderPromptVisibility(report: CanonicalReport): string {
   const rows = findings?.providers ?? [];
   const pct = report.executive_fact_counts.prompt_visibility.visibility_percentage;
 
-  const body = rows
-    .map(
-      (r) => `
-      <tr>
-        <td class="wrap">${escapeHtml(r.prompt)}</td>
-        <td>${escapeHtml(r.provider)}</td>
-        <td>${statusBadge(r.mentionClass)}</td>
-        <td class="wrap">${escapeHtml(r.evidence ?? "")}</td>
-      </tr>`
-    )
+  const targetsById = new Map(report.audit_info.audited_targets.map((t) => [t.id, t]));
+  const multiTarget = report.audit_info.audited_targets.length > 1;
+
+  // Group the flat findings array by prompt (+ target, so the same prompt
+  // audited against two different targets stays separate) -- a render-time
+  // grouping only; the underlying findings array and every field on each
+  // row are untouched.
+  const groups = new Map<string, { prompt: string; targetId?: string; rows: PromptVisibilityFinding[] }>();
+  for (const r of rows) {
+    const key = `${r.targetId ?? ""}::${r.prompt}`;
+    const existing = groups.get(key);
+    if (existing) existing.rows.push(r);
+    else groups.set(key, { prompt: r.prompt, targetId: r.targetId, rows: [r] });
+  }
+
+  const cards = Array.from(groups.values())
+    .map((g) => {
+      const target = g.targetId ? targetsById.get(g.targetId) : undefined;
+      const targetLabel = multiTarget && target ? target.name || target.url : null;
+
+      const providerRows = g.rows
+        .map((r) => {
+          const display = providerDisplay(r.provider);
+          return `
+          <div class="pv-row">
+            ${providerLogo(display)}
+            <div class="pv-provider-name">${escapeHtml(display.label)}</div>
+            ${statusBadge(r.mentionClass)}
+            <div class="pv-evidence wrap">${escapeHtml(r.evidence ?? "")}</div>
+          </div>`;
+        })
+        .join("");
+
+      return `
+      <div class="pv-card">
+        <div class="pv-prompt">"${escapeHtml(g.prompt)}"</div>
+        ${targetLabel ? `<div class="pv-target">For ${escapeHtml(targetLabel)}</div>` : ""}
+        <div class="pv-providers">${providerRows}</div>
+      </div>`;
+    })
     .join("");
 
   return `
     <section class="page">
-      <h2>Prompt Visibility</h2>
-      <div class="metric-sub" style="margin-bottom:12px">
-        ${pct === null ? "Not enough valid checks to measure overall visibility." : `Overall visibility: ${pct}%`}
+      <div class="section-eyebrow">Prompt Visibility</div>
+      <div class="pv-header">
+        <h2 class="section-heading" style="margin-bottom:0">Do you show up when prospects ask</h2>
+        <div class="pv-pct">
+          ${pct === null ? `<span class="metric-sub">Not enough valid checks to measure</span>` : `Visible in <span class="pv-pct-value">${pct}%</span> of checks`}
+        </div>
       </div>
-      <table>
-        <thead><tr><th>Prompt</th><th>Provider</th><th>Result</th><th>Evidence</th></tr></thead>
-        <tbody>${body || `<tr><td colspan="4" class="empty">No prompt visibility results available.</td></tr>`}</tbody>
-      </table>
+      <div class="pv-list">${cards || `<div class="empty-state">No prompt visibility results available.</div>`}</div>
     </section>`;
 }
 
@@ -236,6 +335,13 @@ interface DirectoryFinding {
   listingUrl?: string | null;
 }
 
+function platformName(raw: string): string {
+  return raw
+    .split("_")
+    .map((w) => (w.length <= 2 ? w.toUpperCase() : w.charAt(0).toUpperCase() + w.slice(1)))
+    .join(" ");
+}
+
 function renderSocialAndDirectories(report: CanonicalReport): string {
   const socialFindings = report.component_results.social_profiles?.findings as
     | { platforms?: SocialFinding[] }
@@ -247,39 +353,45 @@ function renderSocialAndDirectories(report: CanonicalReport): string {
   const socialRows = (socialFindings?.platforms ?? [])
     .map(
       (p) => `
-      <tr>
-        <td>${escapeHtml(p.platform)}</td>
-        <td>${statusBadge(p.profileStatus)}</td>
-        <td>${statusBadge(p.connected)}</td>
-        <td class="wrap">${p.profileUrl ? escapeHtml(p.profileUrl) : "—"}</td>
-      </tr>`
+      <div class="matrix-item">
+        <div class="matrix-row-3">
+          <div class="matrix-platform">${escapeHtml(platformName(p.platform))}</div>
+          <div>${statusBadge(p.profileStatus)}</div>
+          <div>${statusBadge(p.connected)}</div>
+        </div>
+        ${p.profileUrl ? `<div class="matrix-url wrap">${escapeHtml(p.profileUrl)}</div>` : ""}
+      </div>`
     )
     .join("");
 
-  const directoryRows = (directoryFindings?.platforms ?? [])
+  const directoryCards = (directoryFindings?.platforms ?? [])
     .map(
       (p) => `
-      <tr>
-        <td>${escapeHtml(p.platform)}</td>
-        <td>${statusBadge(p.status)}</td>
-        <td class="wrap">${p.listingUrl ? escapeHtml(p.listingUrl) : "—"}</td>
-      </tr>`
+      <div class="listing-card">
+        <div class="listing-top">
+          <div class="listing-platform">${escapeHtml(platformName(p.platform))}</div>
+          ${statusBadge(p.status)}
+        </div>
+        ${p.listingUrl ? `<div class="listing-url wrap">${escapeHtml(p.listingUrl)}</div>` : ""}
+      </div>`
     )
     .join("");
 
   return `
     <section class="page">
-      <h2>Social Profiles</h2>
-      <table>
-        <thead><tr><th>Platform</th><th>Profile</th><th>Connected</th><th>URL</th></tr></thead>
-        <tbody>${socialRows || `<tr><td colspan="4" class="empty">No social profile results available.</td></tr>`}</tbody>
-      </table>
+      <div class="section-eyebrow">Social &amp; Third-Party Presence</div>
+      <h2 class="section-heading">Social Profiles</h2>
+      <div class="matrix">
+        <div class="matrix-row-3 matrix-head">
+          <div>Platform</div><div>Profile</div><div>Connected</div>
+        </div>
+        ${socialRows || `<div class="empty-state">No social profile results available.</div>`}
+      </div>
 
-      <h2 style="margin-top:28px">Third-Party Listings</h2>
-      <table>
-        <thead><tr><th>Platform</th><th>Status</th><th>URL</th></tr></thead>
-        <tbody>${directoryRows || `<tr><td colspan="3" class="empty">No directory results available.</td></tr>`}</tbody>
-      </table>
+      <h2 class="section-heading" style="margin-top:28px">Third-Party Listings</h2>
+      <div class="listing-grid">
+        ${directoryCards || `<div class="empty-state">No directory results available.</div>`}
+      </div>
     </section>`;
 }
 
@@ -302,7 +414,7 @@ function renderTechnical(report: CanonicalReport): string {
     .map(
       (c) => `
       <tr>
-        <td>${escapeHtml(c.userAgent)}</td>
+        <td class="crawler-name">${escapeHtml(c.userAgent)}</td>
         <td>${statusBadge(c.status)}</td>
         <td class="wrap">${escapeHtml(c.reason ?? "")}</td>
       </tr>`
@@ -316,12 +428,13 @@ function renderTechnical(report: CanonicalReport): string {
 
   return `
     <section class="page">
-      <h2>Technical AI Accessibility</h2>
-      <table>
+      <div class="section-eyebrow">Technical Accessibility</div>
+      <h2 class="section-heading">Can AI crawlers reach your site</h2>
+      <table class="crawler-table">
         <thead><tr><th>Crawler</th><th>Status</th><th>Rule / Reason</th></tr></thead>
         <tbody>${rows || `<tr><td colspan="3" class="empty">No crawler results available.</td></tr>`}</tbody>
       </table>
-      <div class="grid grid-2" style="margin-top:16px">
+      <div class="stat-grid stat-grid-2" style="margin-top:18px">
         ${card("robots.txt", statusBadge(robotsStatus, robotsStatus === "Not Found" || robotsStatus === "Cannot Verify" ? NEUTRAL_DOT : undefined))}
         ${card("llms.txt", `${statusBadge(llmsStatus, NEUTRAL_DOT)}<div class="metric-sub">Optional and experimental -- absence is not a required fix.</div>`)}
       </div>
@@ -330,7 +443,10 @@ function renderTechnical(report: CanonicalReport): string {
 
 // -- Key Gaps -----------------------------------------------------------
 
-function renderGapCard(gap: CanonicalReport["grouped_gaps"][number], interpretation: CanonicalReport["interpretations"][number] | undefined): string {
+function renderGapCard(
+  gap: CanonicalReport["grouped_gaps"][number],
+  interpretation: CanonicalReport["interpretations"][number] | undefined
+): string {
   const observed = interpretation?.what_we_observed ?? gap.deterministic_reason;
   const suggests = interpretation?.what_this_suggests ?? "";
   const consider = interpretation?.what_to_consider ?? "";
@@ -354,7 +470,8 @@ function renderKeyGaps(report: CanonicalReport): string {
   if (report.grouped_gaps.length === 0) {
     return `
       <section class="page">
-        <h2>Key Gaps</h2>
+        <div class="section-eyebrow">Key Gaps</div>
+        <h2 class="section-heading">Expert interpretation</h2>
         <div class="empty-state">No confirmed gaps were identified in the audited checks.</div>
       </section>`;
   }
@@ -364,7 +481,8 @@ function renderKeyGaps(report: CanonicalReport): string {
 
   return `
     <section class="page">
-      <h2>Key Gaps</h2>
+      <div class="section-eyebrow">Key Gaps</div>
+      <h2 class="section-heading">Expert interpretation</h2>
       <div class="gap-list">${cards}</div>
     </section>`;
 }
@@ -375,15 +493,23 @@ function renderClosing(report: CanonicalReport): string {
   const c = report.executive_fact_counts;
   return `
     <section class="page closing">
-      <h2>Closing</h2>
-      <p class="wrap">
-        This audit reviewed brand recognition across ${c.brand_recognition.total_providers} AI systems, prompt visibility,
-        presence across ${c.social_profiles.total_platforms} social platforms and ${c.directories.total_directories} third-party
-        directories, and accessibility for ${c.technical_accessibility.total_crawlers} AI crawlers.
-        ${c.confirmed_gaps_count} confirmed finding${c.confirmed_gaps_count === 1 ? "" : "s"} ${c.confirmed_gaps_count === 1 ? "is" : "are"} detailed above.
-      </p>
-      <div class="cta">${escapeHtml(report.closing.cta_text)}</div>
-      <div class="closing-brand">AI-Clinic · Developed by smartclick.agency</div>
+      <div>
+        <div class="section-eyebrow">Closing</div>
+        <h2 class="section-heading">Where ${escapeHtml(report.audit_info.company_name)} goes from here</h2>
+        <p class="wrap closing-body">
+          This audit reviewed brand recognition across ${c.brand_recognition.total_providers} AI systems, prompt visibility,
+          presence across ${c.social_profiles.total_platforms} social platforms and ${c.directories.total_directories} third-party
+          directories, and accessibility for ${c.technical_accessibility.total_crawlers} AI crawlers.
+          ${c.confirmed_gaps_count} confirmed finding${c.confirmed_gaps_count === 1 ? "" : "s"} ${c.confirmed_gaps_count === 1 ? "is" : "are"} detailed above.
+        </p>
+      </div>
+      <div class="closing-footer">
+        <div class="cta">${escapeHtml(report.closing.cta_text)}</div>
+        <div class="closing-brand-row">
+          <div class="closing-brand">AI-Clinic</div>
+          <div class="closing-secondary">Developed by smartclick.agency</div>
+        </div>
+      </div>
     </section>`;
 }
 
@@ -400,15 +526,25 @@ const STYLES = `
     line-height: 1.5;
   }
   .page {
-    padding: 36px 40px;
+    padding: 40px 44px;
     page-break-after: always;
     break-after: page;
   }
   .page:last-child { page-break-after: auto; }
-  h2 { font-size: 20px; font-weight: 600; color: ${DARK_NAVY}; margin: 0 0 16px; }
+
+  .section-eyebrow {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: ${LABEL_GRAY};
+    margin-bottom: 6px;
+  }
+  h2.section-heading { font-size: 19px; font-weight: 600; color: ${DARK_NAVY}; margin: 0 0 20px; }
   h3 { font-size: 13px; font-weight: 600; margin: 0 0 8px; color: ${DARK_NAVY}; }
   .wrap { overflow-wrap: break-word; word-break: break-word; }
 
+  /* -- Cover -- */
   .cover {
     display: flex;
     flex-direction: column;
@@ -418,76 +554,146 @@ const STYLES = `
     text-align: center;
     background: linear-gradient(180deg, #FFFFFF 0%, ${NEUTRAL_BG} 100%);
   }
-  .cover-brand { font-size: 28px; font-weight: 700; color: ${BRAND_BLUE}; letter-spacing: 0.5px; }
+  .cover-brand { font-size: 28px; font-weight: 700; color: ${DARK_NAVY}; letter-spacing: 0.3px; }
   .cover-secondary { font-size: 11px; color: ${MUTED_TEXT}; margin-top: 4px; }
-  .cover-title { font-size: 22px; font-weight: 500; color: ${DARK_NAVY}; margin-top: 56px; }
-  .cover-company { font-size: 30px; font-weight: 700; margin-top: 12px; }
-  .cover-website { font-size: 14px; color: ${MUTED_TEXT}; margin-top: 6px; overflow-wrap: break-word; max-width: 80%; }
-  .cover-meta { margin-top: 48px; font-size: 12px; color: ${MUTED_TEXT}; }
+  .cover-divider { width: 36px; height: 1px; background: ${NEUTRAL_BORDER}; margin-top: 28px; }
+  .cover-title { font-size: 24px; font-weight: 600; color: ${DARK_NAVY}; margin-top: 28px; }
+  .cover-tagline { font-size: 13px; color: ${MUTED_TEXT}; margin-top: 10px; max-width: 340px; line-height: 1.6; }
+  .cover-company { font-size: 28px; font-weight: 700; margin-top: 44px; }
+  .cover-website { font-size: 13px; color: ${MUTED_TEXT}; margin-top: 6px; overflow-wrap: break-word; max-width: 80%; }
+  .cover-meta { margin-top: 44px; font-size: 11.5px; color: ${LABEL_GRAY}; }
   .cover-meta div { margin-top: 4px; }
 
-  .grid { display: flex; gap: 14px; flex-wrap: wrap; }
-  .grid-2 > .card { flex: 1 1 45%; }
-  .grid-3 > .card { flex: 1 1 30%; }
+  /* -- Stat cards (Executive Summary) -- */
+  .stat-grid { display: flex; gap: 14px; flex-wrap: wrap; }
+  .stat-grid-3 > .stat-card { flex: 1 1 30%; }
+  .stat-grid-2 > .stat-card { flex: 1 1 45%; }
+  .stat-card {
+    background: ${NEUTRAL_BG};
+    border: 1px solid ${NEUTRAL_BORDER};
+    border-top: 3px solid ${BRAND_BLUE};
+    border-radius: 14px;
+    padding: 16px 18px;
+    break-inside: avoid;
+  }
+  .stat-label { font-size: 10.5px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: ${LABEL_GRAY}; margin-bottom: 8px; }
+  .stat-value { font-size: 22px; font-weight: 700; color: ${DARK_NAVY}; line-height: 1.15; }
+  .stat-sub { font-size: 11px; color: ${MUTED_TEXT}; margin-top: 5px; }
+
+  .highlight-row { display: flex; gap: 14px; margin-top: 22px; }
+  .highlight-tile {
+    flex: 1;
+    background: ${DARK_NAVY};
+    border-radius: 14px;
+    padding: 18px 20px;
+    color: #FFFFFF;
+  }
+  .highlight-value { font-size: 30px; font-weight: 700; color: ${BRAND_BLUE}; line-height: 1; }
+  .highlight-value-muted { color: #FFFFFF; }
+  .highlight-label { font-size: 11px; color: #B9C4D1; margin-top: 6px; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; }
+
+  .metric-sub { font-size: 11px; color: ${MUTED_TEXT}; }
+
+  /* -- Provider logos -- */
+  .provider-logo { width: 26px; height: 26px; object-fit: contain; flex: none; }
+  .provider-logo-fallback {
+    width: 26px; height: 26px; border-radius: 50%; background: ${NEUTRAL_BG};
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; color: ${MUTED_TEXT}; flex: none;
+  }
+
+  /* -- Badges -- */
+  .badge { display: inline-flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 600; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex: none; }
+
+  /* -- Brand Recognition cards -- */
+  .br-list { display: flex; flex-direction: column; gap: 12px; }
+  .br-card { background: #FFFFFF; border: 1px solid ${NEUTRAL_BORDER}; border-radius: 14px; padding: 16px 18px; break-inside: avoid; }
+  .br-top { display: flex; align-items: center; gap: 12px; }
+  .br-name { flex: 1; font-size: 13.5px; font-weight: 600; color: ${DARK_NAVY}; }
+  .br-evidence { font-size: 11.5px; color: ${MUTED_TEXT}; margin-top: 10px; line-height: 1.6; }
+  .br-source { font-size: 10.5px; color: ${LABEL_GRAY}; margin-top: 6px; }
+
+  /* -- Prompt Visibility -- */
+  .pv-header { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+  .pv-pct { font-size: 12px; color: ${MUTED_TEXT}; }
+  .pv-pct-value { font-weight: 700; color: ${GOOD}; font-size: 13px; }
+  .pv-list { display: flex; flex-direction: column; gap: 14px; }
+  .pv-card { background: #FFFFFF; border: 1px solid ${NEUTRAL_BORDER}; border-radius: 14px; padding: 16px 18px; break-inside: avoid; }
+  .pv-prompt { font-size: 13px; font-weight: 600; color: ${DARK_NAVY}; }
+  .pv-target { font-size: 10.5px; color: ${LABEL_GRAY}; margin-top: 3px; }
+  .pv-providers { margin-top: 12px; display: flex; flex-direction: column; gap: 9px; }
+  .pv-row { display: grid; grid-template-columns: 22px 76px auto 1fr; align-items: center; gap: 10px; padding-top: 9px; border-top: 1px solid ${NEUTRAL_BORDER_SUBTLE}; }
+  .pv-providers .pv-row:first-child { border-top: none; padding-top: 0; }
+  .pv-row .provider-logo, .pv-row .provider-logo-fallback { width: 18px; height: 18px; }
+  .pv-provider-name { font-size: 11px; font-weight: 600; color: ${DARK_NAVY}; }
+  .pv-evidence { font-size: 10.5px; color: ${MUTED_TEXT}; }
+
+  /* -- Social matrix -- */
+  .matrix { border: 1px solid ${NEUTRAL_BORDER}; border-radius: 14px; overflow: hidden; }
+  .matrix-row-3 { padding: 11px 16px; display: grid; grid-template-columns: 1.4fr 1fr 1fr; align-items: center; gap: 10px; }
+  .matrix-head { background: ${NEUTRAL_BG}; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: ${LABEL_GRAY}; }
+  .matrix-item { border-bottom: 1px solid ${NEUTRAL_BORDER_SUBTLE}; break-inside: avoid; }
+  .matrix-item:last-child { border-bottom: none; }
+  .matrix-platform { font-size: 12px; font-weight: 500; color: ${DARK_NAVY}; }
+  .matrix-url { padding: 0 16px 12px; margin-top: -2px; font-size: 10.5px; color: ${LABEL_GRAY}; }
+
+  /* -- Directory listing cards -- */
+  .listing-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .listing-card { border: 1px solid ${NEUTRAL_BORDER}; border-radius: 12px; padding: 12px 14px; break-inside: avoid; }
+  .listing-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .listing-platform { font-size: 12px; font-weight: 600; color: ${DARK_NAVY}; }
+  .listing-url { font-size: 10px; color: ${LABEL_GRAY}; margin-top: 6px; }
+
+  /* -- Technical Accessibility table -- */
+  .crawler-table { width: 100%; border-collapse: collapse; }
+  .crawler-table thead { display: table-header-group; }
+  .crawler-table tr { break-inside: avoid; }
+  .crawler-table th {
+    text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px;
+    color: ${LABEL_GRAY}; border-bottom: 1px solid ${NEUTRAL_BORDER}; padding: 9px 12px;
+  }
+  .crawler-table td { padding: 11px 12px; border-bottom: 1px solid ${NEUTRAL_BORDER_SUBTLE}; font-size: 11.5px; vertical-align: top; }
+  .crawler-name { font-weight: 600; color: ${DARK_NAVY}; }
+  td.empty { color: ${MUTED_TEXT}; text-align: center; padding: 20px; }
 
   .card {
     background: ${NEUTRAL_BG};
     border: 1px solid ${NEUTRAL_BORDER};
     border-radius: 14px;
     padding: 16px;
-    box-shadow: 0 1px 2px rgba(18,38,58,0.04);
     break-inside: avoid;
   }
-  .metric { font-size: 16px; font-weight: 600; color: ${DARK_NAVY}; }
-  .metric-sub { font-size: 11px; color: ${MUTED_TEXT}; margin-top: 4px; }
 
-  table { width: 100%; border-collapse: collapse; margin-top: 4px; }
-  thead { display: table-header-group; }
-  tr { break-inside: avoid; }
-  th {
-    text-align: left;
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-    color: ${MUTED_TEXT};
-    border-bottom: 1px solid ${NEUTRAL_BORDER};
-    padding: 8px 10px;
-  }
-  td {
-    padding: 9px 10px;
-    border-bottom: 1px solid ${NEUTRAL_BORDER};
-    font-size: 11.5px;
-    vertical-align: top;
-  }
-  td.empty { color: ${MUTED_TEXT}; text-align: center; padding: 20px; }
-
-  .badge { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; }
-  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
-
+  /* -- Key Gaps -- */
   .gap-list { display: flex; flex-direction: column; gap: 14px; }
   .gap-card {
     background: #FFFFFF;
     border: 1px solid ${NEUTRAL_BORDER};
-    border-radius: 14px;
-    padding: 16px 18px;
+    border-left: 4px solid ${BRAND_BLUE};
+    border-radius: 12px;
+    padding: 16px 20px;
     break-inside: avoid;
     page-break-inside: avoid;
   }
   .gap-header { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
-  .gap-title { font-size: 14px; font-weight: 600; color: ${DARK_NAVY}; }
+  .gap-title { font-size: 14.5px; font-weight: 600; color: ${DARK_NAVY}; }
   .gap-badge {
     font-size: 10px;
+    font-weight: 600;
     color: ${ATTENTION};
     background: rgba(192,138,30,0.1);
-    border-radius: 8px;
-    padding: 3px 8px;
+    border-radius: 999px;
+    padding: 3px 10px;
     white-space: nowrap;
   }
   .gap-evidence { font-size: 11px; color: ${MUTED_TEXT}; margin-top: 6px; }
   .gap-columns {
     display: flex;
     gap: 16px;
-    margin-top: 12px;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid ${NEUTRAL_BORDER_SUBTLE};
     flex-wrap: wrap;
   }
   .gap-columns > div { flex: 1 1 30%; min-width: 150px; }
@@ -507,9 +713,14 @@ const STYLES = `
     font-size: 13px;
   }
 
-  .closing { display: flex; flex-direction: column; justify-content: center; height: 100vh; }
-  .cta { font-size: 16px; font-weight: 600; color: ${BRAND_BLUE}; margin-top: 24px; }
-  .closing-brand { font-size: 10.5px; color: ${MUTED_TEXT}; margin-top: 40px; }
+  /* -- Closing -- */
+  .closing { display: flex; flex-direction: column; justify-content: space-between; height: 100vh; }
+  .closing-body { color: ${MUTED_TEXT}; font-size: 12.5px; line-height: 1.7; max-width: 460px; }
+  .closing-footer { display: flex; flex-direction: column; gap: 20px; }
+  .cta { font-size: 16px; font-weight: 600; color: ${DARK_NAVY}; }
+  .closing-brand-row { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid ${NEUTRAL_BORDER_SUBTLE}; padding-top: 18px; }
+  .closing-brand { font-size: 14px; font-weight: 700; color: ${DARK_NAVY}; }
+  .closing-secondary { font-size: 10.5px; color: ${MUTED_TEXT}; }
 `;
 
 /**
