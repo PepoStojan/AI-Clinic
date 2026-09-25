@@ -1,179 +1,165 @@
 # AI-Clinic — Restart Checkpoint
 
-## Current Phase
-Same-day MVP shipping phase. The application now works end-to-end locally with real services.
+## Project Status
 
-## Completed Tasks
-- INFRA-001 — Supabase Foundation — PASS / CLOSED
-- INFRA-002 — Trigger.dev Foundation — PASS / CLOSED
-- CORE-001 — Audit Creation + Checklist Engine — PASS / CLOSED
-- COMP-001 — Brand Recognition — PASS / CLOSED
-- COMP-002 — Prompt Visibility — PASS / CLOSED
-- COMP-003 — Social Profiles — PASS / CLOSED
-- COMP-004 — Directories — PASS / CLOSED
-- COMP-005 — Technical Accessibility — PASS / CLOSED
-- CORE-002 — Deterministic Gap Detection + Grouping — PASS / CLOSED
-- AI-001 — Evidence-Bound Gap Interpretation — PASS / CLOSED
-- REPORT-001 — Canonical Report Object + Pre-PDF Gate — PASS / CLOSED
-- PDF-001 — Playwright PDF Generation — PASS / CLOSED
-- UI-001 — MVP UI + End-to-End Audit Execution — PASS / CLOSED
+**AI-Clinic MVP is LIVE and fully functional in production.**
 
-## Current State
-- Last completed task: UI-001
-- Next task: QA-001
-- After QA-001: DEPLOY-001
-- Do not start QA-001 without explicit user authorization
-- Current blockers: None blocking QA
+- Production URL: https://ai-clinic-sage.vercel.app
+- GitHub `main` is current.
+- Vercel production deployment works.
+- Trigger.dev production worker works.
+- Supabase production data/storage works.
+- Shared-password login works.
+- Full audit pipeline works end-to-end in production.
+- PDF download via signed URL works.
 
-## Current Working Product
+QA-001 (PASS) and DEPLOY-001 (PASS) are both complete. The MVP itself is production-functional. Remaining work is optional polish and one required security follow-up (see "Next Required Step" below).
 
-Live-verified end-to-end flow:
+## Latest Verified Production Audit
 
-```
-Shared Password Login
-→ New Audit
-→ Audit Creation
-→ Checklist Generation
-→ Trigger.dev Queue
-→ 5 Audit Components
-→ Deterministic Gap Detection
-→ Evidence-Bound Interpretation
-→ Canonical Report
-→ Pre-PDF Gate
-→ Playwright PDF
-→ Private Supabase Storage
-→ COMPLETED
-→ Signed PDF Download
-```
+- Company: Ocuco
+- Audit code: `AIC-2026-000002`
+- Audit ID: `3e865f0c-41d6-4ad3-87c1-987b38ab94f3`
+- Status flow: `CREATED → QUEUED → PROCESSING → VALIDATING → GENERATING_PDF → COMPLETED`
+- Execution time during smoke run: ~64 seconds
+- All 5 components: COMPLETED
+- Grouped gaps: 5
+- Report status: `GENERATED`, `ready_for_pdf: true`
+- Signed PDF download: verified working
 
-- Final clean real end-to-end run: **38.4 seconds**
-- Test company: Stripe
-- Result: PASS
+## 5 Production Components
 
-## UI-001 State
+1. Brand Recognition
+2. Prompt Visibility
+3. Social Profiles
+4. Third-Party Listings (Directories)
+5. Technical Accessibility
 
-**Shared access:** shared password only, verified server-side, signed httpOnly session cookie. No user accounts, roles, or SSO.
+## Production PDF
 
-**Screens (exactly 4):**
-1. Shared Access
-2. New Audit
-3. Audits List
-4. Audit Detail / Progress
+The redesigned PDF report is live in production.
 
-**Progress polling:** ~every 4 seconds, stops on terminal status, no fake percentages.
+- Current production Trigger.dev worker version: `20260925.6`
+- PDF is currently 10 pages for the Ocuco audit
+- AI provider logos embedded (base64, no hotlinking) and verified rendering: ChatGPT, Gemini, Claude, Google AI
+- Social platform logos embedded (base64, no hotlinking) and verified rendering: LinkedIn, Facebook, Instagram, X/Twitter, YouTube, TikTok, Threads, Reddit
+- Prompt Visibility is grouped by prompt: prompt shown once, four provider rows beneath it (no more repeated-prompt flat table)
+- Executive Summary uses redesigned dashboard-style stat cards
+- Brand Recognition uses provider logo cards
+- Social Profiles uses platform logo + status pills
+- Key Gaps uses consulting-style cards (title, affected-check count, evidence, What we observed / What this suggests / What to consider)
+- `canonical_report_json` remains the sole source of truth for the renderer — presentation-only changes throughout
+- No scoring/severity/priority system exists anywhere
+- Latest verified production PDF regenerate run: `run_06gdj04e05q4m76a2eq4bmg501`
+- Signed production PDF download re-verified after this change
 
-**Audit statuses:** CREATED, QUEUED, PROCESSING, VALIDATING, READY_FOR_PDF, GENERATING_PDF, COMPLETED, BLOCKED, PARTIAL, FAILED.
+**Important lesson learned:** `src/lib/pdf/html-template.ts` and `logo-assets.ts` are imported by the Trigger.dev task `regenerate-audit-pdf` / `run-ai-clinic-audit`. Any change to these (or anything else imported by `src/trigger/*`) requires a separate `npx trigger.dev@latest deploy` — a Vercel redeploy does **not** update the Trigger.dev worker. This was missed once during this work and caught by checking the run's reported version before declaring success.
 
-**Current interpretation (accepted for MVP unless QA finds a concrete issue):**
-- Component crash → PARTIAL
-- Clean pre-PDF gate failure → BLOCKED
-- Unrecoverable pipeline/system failure → FAILED
+## Recent Commits (most recent first)
 
-## Orchestration State
+- `51b48d2` — feat: add social platform logos to PDF report
+- `cffbb25` — feat: redesign AI-Clinic PDF report
+- `d7294c9` — feat: refine AI-Clinic production UI
+- `d972ccf` — chore: prepare AI-Clinic production deployment (DEPLOY-001 start)
 
-Real Trigger.dev orchestration exists. Main task: `run-ai-clinic-audit`.
+Current HEAD: `51b48d2`
 
-Pipeline:
-1. PROCESSING
-2. `runBrandRecognitionComponent`
-3. `runPromptVisibilityComponent`
-4. `runSocialProfilesComponent`
-5. `runDirectoriesComponent`
-6. `runTechnicalAccessibilityComponent`
-7. VALIDATING
-8. `runGapDetection`
-9. `runGapInterpretation`
-10. `runReportAssembly`
-11. GENERATING_PDF
-12. `runPdfGeneration`
-13. COMPLETED
+## UI
 
-The 5 components run via `Promise.allSettled`. `CREATED → QUEUED` occurs only after successful Trigger.dev submission. The browser does not need to remain open.
+- Login page: works
+- Audits page: works
+- New Audit page: works (individual prompt inputs with add/remove — never changed to a free-text textarea, despite the approved design mockup using one, to preserve exact existing form-submission behavior)
+- Audit Detail / Progress page: works, includes per-step icon treatment (checkmark / pulse / `!` / neutral dot)
+- UI redesign (CSS + one visual-only JSX change) deployed to production
 
-## Important Locked Implementation Decisions
+**Canonical UI tokens (already matched the codebase before the redesign, no color values needed to change):**
+- Primary blue: `#28A8DF`
+- Dark navy: `#12263A`
+- Font: Poppins
+- Brand text: `AI-Clinic`
+- Secondary text: `Developed by smartclick.agency`
 
-1. Brand Recognition uses the DataForSEO unified gateway for ChatGPT, Gemini, Claude, and Google AI. No native OpenAI/Gemini/Anthropic SDK adapters.
-2. Prompt Visibility uses the validated DataForSEO / VAL-003C entity-validation logic, generalized to the real schema (no SmartClick-specific fixtures).
-3. Social Profiles: Apify actor `meU6XrAxXviSICIXQ` primary, DataForSEO SERP fallback; real actor output schema verified live.
-4. Directories: exactly 10 platforms, DataForSEO primary, Claude/DataForSEO web-search fallback, no "Not Applicable," no ratings/review counts.
-5. Technical Accessibility: exactly 6 crawlers, robots.txt + llms.txt only, fully deterministic, no AI.
-6. N/A / Could Not Verify / No Result never becomes a gap, anywhere in the pipeline.
-7. Gap detection (CORE-002) is deterministic; Claude never decides whether a gap exists.
-8. Claude interpretation (AI-001) can never change facts, counts, or identity fields — only produces `what_we_observed` / `what_this_suggests` / `what_to_consider`.
-9. The PDF renderer consumes `reports.canonical_report_json` only — no direct queries to component_results/grouped_gaps/checklist_items/provider APIs.
-10. The `audit-reports` Supabase Storage bucket remains private; downloads only via signed URL.
-11. Shared access only — no full authentication system.
-12. No overall score, severity, or priority anywhere in the product.
+## Trigger.dev
 
-## Latest Test Status
+- Production deploy is **separate** from Vercel — remember this every time.
+- Whenever code imported by a Trigger.dev task changes (especially the PDF renderer/template), run: `npx trigger.dev@latest deploy` (use `--native-build --detach` to avoid the CLI's log-stream connection dropping in this environment; poll `runs get <id>` afterward to confirm the deployed `Version`).
+- Current verified worker version: `20260925.6`
+- Project: `proj_pazyklzkrxxmecphnoco` (SmartClick org, AI-Clinic project)
 
-- **COMP-005:** full regression 200/200 PASS
-- **CORE-002:** full regression 238/238 PASS
-- **AI-001:** full regression 269/269 PASS
-- **REPORT-001:** full regression 304/304 PASS
-- **PDF-001:** full regression 329/329 PASS; real 8-page PDF generated, uploaded, downloaded, manually inspected
-- **UI-001:** new UI/orchestration tests 34/34 PASS; full regression 364/364 PASS; typecheck/lint/build PASS; real end-to-end audit PASS (38.4s); PDF download PASS
+## Vercel
 
-## Latest Commits
+- Production project: `stojan-s-projects/ai-clinic`
+- Production URL: https://ai-clinic-sage.vercel.app
+- Environment variables read by Edge Middleware/`proxy.ts` (currently just `AI_CLINIC_SHARED_PASSWORD`) must be **Config** (non-sensitive) type, not the default **Secret** (sensitive/encrypted) type — sensitive vars were found to fail even in plain Node serverless functions on this project, not just Edge, so all 10 app env vars are currently set as Config. Only `DATABASE_URL` remains Secret type (it's unused by the app code, so this is harmless).
+- `TRIGGER_SECRET_KEY` is configured for production as Config type.
+- Required production env vars (11 total, see `.env.example` for the full list): `NEXT_PUBLIC_APP_URL`, `AI_CLINIC_SHARED_PASSWORD`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `DATABASE_URL` (unused), `TRIGGER_SECRET_KEY`, `DATAFORSEO_LOGIN`, `DATAFORSEO_PASSWORD`, `APIFY_API_TOKEN`, `APIFY_SOCIAL_ACTOR_ID`.
 
-- CORE-002: `a7efa83`
-- AI-001: `70ee9f2`
-- REPORT-001: `1b967cf`
-- PDF-001: `f7088dc`
-- UI-001: `ba0100d`
+## Security
 
-Latest/current commit: `ba0100d`
+**Do not commit:**
+- `Connectors/`
+- `Recources/`
+- `dataforseo-test/`
+- `.env.local`
+- `Smartclick-APIs.rtf`
+- any other API/reference/secret file
 
-## Deployment Risk — Important
+These remain local/reference-only. **The GitHub repository is public** — treat any accidental commit of the above as an urgent rotation event, not just a revert.
 
-**Trigger.dev production deployment has NOT yet been verified.**
+**Outstanding security item:** a Trigger.dev production API key was exposed during setup and rotated once; a second production key was later pasted during troubleshooting conversation history. **Before final handoff:** rotate the current Trigger.dev Production API key again, update Vercel's `TRIGGER_SECRET_KEY` (as Config type, per the note above), redeploy Vercel, and redeploy the Trigger.dev worker, then verify with one lightweight connectivity check (not a full paid audit).
 
-- Local `npx trigger.dev dev` works successfully.
-- `trigger.config.ts` now includes the Playwright build setup (`build.external` + the official `playwright()` build extension) required to avoid a `playwright-core` / `chromium-bidi` bundling failure that otherwise blocks the worker from building at all.
-- A separate `regenerate-pdf` Trigger.dev task was added so Playwright never runs inside a Vercel Server Action.
+Never print secret values in reports/output — this was maintained throughout (values were always piped through shell variables or entered by the user directly, never echoed).
 
-Still required during DEPLOY-001:
-- Run a production Trigger.dev deployment (`trigger.dev deploy`).
-- Verify the worker builds successfully in that environment.
-- Execute a real production task.
-- Verify Playwright PDF generation in the deployed Trigger.dev environment.
+## Validation / Reference
 
-This is **not** blocking QA-001. It is a DEPLOY-001 acceptance requirement.
+- `dataforseo-test/` is reference-only; do not restart or extend it unless explicitly requested.
+- VAL-001 → VAL-003C are frozen. VAL-003C classification logic passed 15/15 tests.
 
-## Vercel Status
+## Current Test Status
 
-Not linked, not deployed. No `.vercel` directory, no `vercel.json` in the repository. Production is **not** live.
+- 358/358 unit tests PASS
+- lint PASS
+- typecheck PASS
+- build PASS
 
-## GitHub Status
+## Known Product Logic (locked, do not change without explicit instruction)
 
-- Local git: initialized, working tree clean, branch `main`.
-- Remote: **not configured** (`git remote -v` returns nothing).
-- Latest commit: `ba0100d` — "feat: add AI-Clinic MVP interface and audit orchestration"
+- No scoring system.
+- No severity/priority system.
+- No automatic email.
+- No user accounts/roles — shared-password access only.
+- Partial component failures must not crash the whole audit (component crash → `PARTIAL`; clean pre-PDF gate failure → `BLOCKED`; unrecoverable pipeline/system failure → `FAILED`).
+- No Result / N/A / Could Not Verify must never become a false gap, anywhere in the pipeline.
+- The PDF renderer consumes `reports.canonical_report_json` only — no direct queries to component_results/grouped_gaps/checklist_items/provider APIs.
+- The `audit-reports` Supabase Storage bucket remains private; downloads only via signed URL.
 
-## Security Notes
+## Next Optional Product Tasks
 
-Some development API keys/tokens were exposed during tooling/debugging sessions. Rotation is required before production/final handoff. This is currently a pre-production security task, not a QA blocker.
+Do **not** automatically implement these — post-MVP ideas only:
+- Audit deletion / soft delete (`deleted_at` recommended)
+- Optional additional UI polish
+- Optional further PDF polish
+- Final secret rotation/security handoff (see below — this one is required, not optional)
 
-## Pending Work
+## Next Required Step
 
-Only two main build stages remain:
+The MVP itself is production-functional. Before declaring final handoff complete:
 
-1. **QA-001** — real functional QA, regression, UI smoke, one clean end-to-end audit, failure-state sanity, production-readiness checks. No polishing rabbit holes.
-2. **DEPLOY-001** — GitHub remote (still missing), Vercel, environment variables, Trigger.dev production deploy, production task execution, production PDF, production smoke audit.
+1. Rotate the currently exposed Trigger.dev Production key.
+2. Update Vercel `TRIGGER_SECRET_KEY` (Config/non-sensitive type).
+3. Redeploy Vercel and redeploy the Trigger.dev worker.
+4. Verify with one lightweight Trigger.dev connectivity check.
+5. Do not run another full paid audit unless necessary.
 
-## Important Files
-- `AI-Clinic-RESTART.md`
-- `AI-Clinic-Claude-Code-Build-Spec.md`
-- `AI-Clinic-Master-Planning-Final-QA.md`
-- `AI-Clinic-Claude-Design-Handoff-Final-QA.md`
+## Restart Rules
 
-## Fresh Chat Startup
-
-When starting a fresh Claude Code chat:
+A fresh Claude session should:
 
 1. Read `AI-Clinic-RESTART.md` first.
-2. Briefly report: current phase, last completed task, next task, blockers, deployment risk.
-3. Do not reread the full project by default.
-4. Read only the canonical sections relevant to QA-001.
-5. Do not start QA-001 until explicitly authorized by the user.
-6. Preserve the same-day MVP shipping priority: working live product > optional polish.
+2. Inspect `git status`.
+3. Inspect current HEAD (`git log -1`).
+4. Not read or modify `dataforseo-test/` unless explicitly needed.
+5. Not commit `Recources/`, `Connectors/`, or other local reference files.
+6. Preserve all frozen MVP business logic (see "Known Product Logic" above).
+7. Make small, isolated tasks only.
+8. Stop after each task with a Quick Report.
