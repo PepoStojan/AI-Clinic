@@ -169,6 +169,35 @@ describe("buildReportHtml", () => {
     expect(html).toContain("Want to understand what to address next and how?");
   });
 
+  describe("PDF-BRAND-006 -- SmartClick logo", () => {
+    it("cover shows the SmartClick logo alongside the existing 'Developed by' text, AI-Clinic still primary", () => {
+      const html = buildReportHtml(baseReport());
+      const coverIdx = html.indexOf('class="cover-top"');
+      const coverSection = html.slice(coverIdx, html.indexOf("cover-body", coverIdx));
+      expect(coverSection).toContain("cover-smartclick-logo");
+      expect(coverSection).toContain("Developed by smartclick.agency");
+      expect(coverSection).toContain("AI-Clinic");
+      // Secondary branding never sized/styled as the primary AI-Clinic wordmark.
+      expect(coverSection.indexOf("cover-brand")).toBeLessThan(coverSection.indexOf("cover-smartclick-logo"));
+    });
+
+    it("closing page shows a smaller, single SmartClick logo occurrence", () => {
+      const html = buildReportHtml(baseReport());
+      // Count actual <img> usages, not the CSS class declarations.
+      const imgOccurrences = (html.match(/<img class="[a-z-]*smartclick-logo"/g) ?? []).length;
+      // Exactly two placements total: one on the cover, one in the closing footer.
+      expect(imgOccurrences).toBe(2);
+      expect(html).toContain("closing-smartclick-logo");
+    });
+
+    it("SmartClick logo image tag is well-formed and never references Recources/ at runtime", () => {
+      const html = buildReportHtml(baseReport());
+      expect(html).not.toContain("Recources");
+      expect(html).toMatch(/<img class="cover-smartclick-logo" src="data:image\/svg\+xml;base64,[^"]+" alt="SmartClick" \/>/);
+      expect(html).toMatch(/<img class="closing-smartclick-logo" src="data:image\/svg\+xml;base64,[^"]+" alt="SmartClick" \/>/);
+    });
+  });
+
   it("no ratings/review-count language appears for directories", () => {
     const html = buildReportHtml(baseReport()).toLowerCase();
     expect(html).not.toMatch(/star rating|review count|\d+\s*reviews/);
@@ -185,42 +214,48 @@ describe("buildReportHtml", () => {
       return html.slice(sectionStart, html.indexOf("Third-Party Listings", sectionStart));
     }
 
-    it("Found + Connected Yes displays as Present, styled green", () => {
+    it("Found + Connected Yes displays as Present, styled green, and shows the URL", () => {
       const section = socialSection({ platform: "linkedin", profileStatus: "Found", connected: "Yes", profileUrl: "https://linkedin.com/company/acme" });
       expect(section).toContain("Present");
       expect(section).not.toContain(">Missing<");
       expect(section).toContain("Connected to website");
       expect(section).toMatch(/Present[\s\S]*?background:#1F9D6B|background:#1F9D6B[\s\S]*?Present/);
+      // SOCIAL-LOGIC-003: Present is the only status that shows the URL.
+      expect(section).toContain("https://linkedin.com/company/acme");
     });
 
-    it("Found + Connected No displays as Missing, not Present", () => {
+    it("Found + Connected No displays as Missing and hides the discovered URL (SOCIAL-LOGIC-003)", () => {
       const section = socialSection({ platform: "facebook", profileStatus: "Found", connected: "No", profileUrl: "https://facebook.com/acme" });
       expect(section).toContain("Missing");
       expect(section).not.toContain(">Present<");
-      expect(section).toContain("Found, not connected");
-      // Raw evidence (the discovered URL) is preserved even though the platform is not Present.
-      expect(section).toContain("https://facebook.com/acme");
+      expect(section).toContain("Not connected to website");
+      // The old differentiated wording must not leak into the client-facing PDF.
+      expect(section).not.toContain("Found, not connected");
+      // The discovered/candidate URL is internal evidence only -- never client-facing unless Present.
+      expect(section).not.toContain("https://facebook.com/acme");
     });
 
-    it("Not Found displays as Missing", () => {
+    it("Not Found displays as Missing with no URL", () => {
       const section = socialSection({ platform: "instagram", profileStatus: "Not Found", connected: "N/A" });
       expect(section).toContain("Missing");
-      expect(section).toContain("No profile found");
+      expect(section).toContain("Not connected to website");
     });
 
-    it("Unverified displays as Missing, never as Present", () => {
-      const section = socialSection({ platform: "tiktok", profileStatus: "Unverified", connected: "N/A" });
+    it("Unverified displays as Missing, never as Present, and hides the candidate URL", () => {
+      const section = socialSection({ platform: "tiktok", profileStatus: "Unverified", connected: "N/A", profileUrl: "https://tiktok.com/@maybe-acme" });
       expect(section).toContain("Missing");
       expect(section).not.toContain(">Present<");
-      expect(section).toContain("Possible match, unconfirmed");
+      expect(section).toContain("Not connected to website");
+      expect(section).not.toContain("Possible match, unconfirmed");
+      expect(section).not.toContain("https://tiktok.com/@maybe-acme");
     });
 
-    it("N/A -- Could Not Verify displays as neutral Could Not Verify, never Missing or Present", () => {
+    it("N/A -- Could Not Verify displays as neutral Could Not Verify, never Missing or Present, no URL", () => {
       const section = socialSection({ platform: "youtube", profileStatus: "N/A — Could Not Verify", connected: "N/A" });
       expect(section).toContain("Could Not Verify");
       expect(section).not.toContain(">Missing<");
       expect(section).not.toContain(">Present<");
-      expect(section).toContain("Discovery could not be verified");
+      expect(section).toContain("Could not verify");
       // Neutral dot color, not the attention (amber) color.
       expect(section).toMatch(/Could Not Verify[\s\S]*?background:#94A3B8|background:#94A3B8[\s\S]*?Could Not Verify/);
     });

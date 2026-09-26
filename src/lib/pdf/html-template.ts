@@ -21,6 +21,7 @@ import {
   TIKTOK_LOGO_DATA_URI,
   THREADS_LOGO_DATA_URI,
   REDDIT_LOGO_DATA_URI,
+  SMARTCLICK_LOGO_DATA_URI,
 } from "./logo-assets";
 
 const BRAND_BLUE = "#28A8DF";
@@ -147,7 +148,10 @@ function renderCover(report: CanonicalReport): string {
       <div class="cover-glow"></div>
       <div class="cover-top">
         <div class="cover-brand">AI-Clinic</div>
-        <div class="cover-secondary">Developed by smartclick.agency</div>
+        <div class="cover-secondary">
+          <img class="cover-smartclick-logo" src="${SMARTCLICK_LOGO_DATA_URI}" alt="SmartClick" />
+          Developed by smartclick.agency
+        </div>
       </div>
       <div class="cover-body">
         <div class="cover-left">
@@ -435,15 +439,16 @@ function socialDisplayStatus(profileStatus: string, connected: string): "Present
   return "Missing";
 }
 
-// Raw-evidence detail line shown alongside the derived Status badge --
-// keeps the underlying profileStatus/connected nuance visible in the PDF
-// without ever letting it be mistaken for the primary display status.
+// SOCIAL-LOGIC-003: client-facing detail line, deliberately collapsed --
+// every Missing cause (Found+not connected, Not Found, Unverified) reads
+// identically as "Not connected to website." The distinct internal reasons
+// (raw profileStatus/connected/evidence) are never lost -- they stay exactly
+// as stored in component_results/canonical_report_json; this function only
+// decides what client-facing sentence to print for a given pair.
 function socialDetailText(profileStatus: string, connected: string): string {
-  if (profileStatus === "N/A — Could Not Verify") return "Discovery could not be verified";
+  if (profileStatus === "N/A — Could Not Verify") return "Could not verify";
   if (profileStatus === "Found" && connected === "Yes") return "Connected to website";
-  if (profileStatus === "Found" && connected === "No") return "Found, not connected";
-  if (profileStatus === "Unverified") return "Possible match, unconfirmed";
-  return "No profile found"; // Not Found
+  return "Not connected to website"; // Found+No, Not Found, Unverified
 }
 
 function renderSocialAndDirectories(report: CanonicalReport): string {
@@ -465,7 +470,16 @@ function renderSocialAndDirectories(report: CanonicalReport): string {
           <div>${statusBadge(displayStatus)}</div>
           <div class="matrix-detail">${escapeHtml(detailText)}</div>
         </div>
-        ${p.profileUrl ? `<div class="matrix-url wrap">${escapeHtml(p.profileUrl)}</div>` : ""}
+        ${
+          // SOCIAL-LOGIC-003: the discovered/candidate URL is client-facing
+          // only when the profile is confirmed Present -- an unconnected or
+          // unverified candidate URL (Apify/DataForSEO noise) must never
+          // reach the PDF, even though it stays fully intact in the stored
+          // component_results/canonical_report_json for internal use.
+          displayStatus === "Present" && p.profileUrl
+            ? `<div class="matrix-url wrap">${escapeHtml(p.profileUrl)}</div>`
+            : ""
+        }
       </div>`;
     })
     .join("");
@@ -613,7 +627,10 @@ function renderClosing(report: CanonicalReport): string {
         <div class="cta">${escapeHtml(report.closing.cta_text)}</div>
         <div class="closing-brand-row">
           <div class="closing-brand">AI-Clinic</div>
-          <div class="closing-secondary">Developed by smartclick.agency</div>
+          <div class="closing-secondary">
+            <img class="closing-smartclick-logo" src="${SMARTCLICK_LOGO_DATA_URI}" alt="SmartClick" />
+            Developed by smartclick.agency
+          </div>
         </div>
       </div>
     </section>`;
@@ -686,7 +703,11 @@ const STYLES = `
     padding: 40px 52px 0;
   }
   .cover-brand { font-size: 18px; font-weight: 700; letter-spacing: 0.3px; color: #FFFFFF; }
-  .cover-secondary { font-size: 10.5px; color: rgba(255,255,255,0.75); margin-top: 3px; }
+  .cover-secondary { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: rgba(255,255,255,0.75); margin-top: 3px; }
+  /* PDF-BRAND-006: official SmartClick SVG rendered white via filter (its
+     source fills are dark, for light backgrounds) -- secondary branding only,
+     never larger/bolder than the AI-Clinic wordmark above it. */
+  .cover-smartclick-logo { height: 15px; width: auto; object-fit: contain; flex: none; filter: brightness(0) invert(1); opacity: 0.8; }
   .cover-body {
     position: relative;
     z-index: 2;
@@ -905,7 +926,10 @@ const STYLES = `
   .cta { font-size: 16px; font-weight: 600; color: ${DARK_NAVY}; }
   .closing-brand-row { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid ${NEUTRAL_BORDER_SUBTLE}; padding-top: 18px; }
   .closing-brand { font-size: 14px; font-weight: 700; color: ${DARK_NAVY}; }
-  .closing-secondary { font-size: 10.5px; color: ${MUTED_TEXT}; }
+  .closing-secondary { display: flex; align-items: center; gap: 5px; font-size: 10.5px; color: ${MUTED_TEXT}; }
+  /* PDF-BRAND-006: native SVG colors read fine on this light page --
+     smaller than the cover treatment, single occurrence, secondary only. */
+  .closing-smartclick-logo { height: 12px; width: auto; object-fit: contain; flex: none; opacity: 0.85; }
 `;
 
 /**
