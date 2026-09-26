@@ -39,6 +39,7 @@ export function normalizeUrlForComparison(url: string): string {
     if (host.startsWith("www.")) host = host.slice(4);
     if (host === "fb.com") host = "facebook.com";
     if (host === "x.com") host = "twitter.com"; // canonicalize the rebrand
+    if (host === "threads.com") host = "threads.net"; // same platform, two live domains
     const path = parsed.pathname.replace(/\/$/, "").toLowerCase();
     return `${host}${path}`;
   } catch {

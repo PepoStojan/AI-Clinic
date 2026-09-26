@@ -12,6 +12,7 @@ function outcome(overrides: Partial<SocialPlatformOutcome>): SocialPlatformOutco
     evidence: "",
     matchedSignals: [],
     unavailableReason: null,
+    connectionSource: null,
     ...overrides,
   };
 }
@@ -73,7 +74,7 @@ vi.mock("../../providers/dataforseo", () => ({
 }));
 vi.mock("../website-links", () => ({
   fetchWebsiteSocialLinks: vi.fn(),
-  websiteLinksToProfile: vi.fn(),
+  resolveConnectionSource: vi.fn(),
 }));
 vi.mock("../../supabase/repositories/checklist-items", () => ({
   updateChecklistItemByIdempotencyKey: vi.fn().mockResolvedValue({}),
@@ -84,7 +85,7 @@ vi.mock("../../supabase/repositories/component-results", () => ({
 
 import { runSocialDiscoveryActor } from "../../providers/apify";
 import { searchGoogleOrganic } from "../../providers/dataforseo";
-import { fetchWebsiteSocialLinks, websiteLinksToProfile } from "../website-links";
+import { fetchWebsiteSocialLinks, resolveConnectionSource } from "../website-links";
 import { updateChecklistItemByIdempotencyKey } from "../../supabase/repositories/checklist-items";
 import { upsertComponentResult } from "../../supabase/repositories/component-results";
 import { runSocialProfilesComponent } from "../run-component";
@@ -96,8 +97,13 @@ const WEBSITE = "https://acmecorp.io";
 describe("runSocialProfilesComponent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(fetchWebsiteSocialLinks).mockResolvedValue({ ok: true, linksByPlatform: {} as never, errorMessage: null });
-    vi.mocked(websiteLinksToProfile).mockReturnValue(false);
+    vi.mocked(fetchWebsiteSocialLinks).mockResolvedValue({
+      ok: true,
+      linksByPlatform: {} as never,
+      schemaLinksByPlatform: {} as never,
+      errorMessage: null,
+    });
+    vi.mocked(resolveConnectionSource).mockReturnValue(null);
     vi.mocked(searchGoogleOrganic).mockResolvedValue({ ok: true, results: [], attempts: 1, errorMessage: null });
   });
 
@@ -207,15 +213,29 @@ describe("runSocialProfilesComponent", () => {
     });
 
     // Website check succeeds; only "facebook" is independently linked from the homepage.
-    vi.mocked(fetchWebsiteSocialLinks).mockResolvedValue({ ok: true, linksByPlatform: {} as never, errorMessage: null });
-    vi.mocked(websiteLinksToProfile).mockImplementation((_links, platform) => platform === "facebook");
+    vi.mocked(fetchWebsiteSocialLinks).mockResolvedValue({
+      ok: true,
+      linksByPlatform: {} as never,
+      schemaLinksByPlatform: {} as never,
+      errorMessage: null,
+    });
+    vi.mocked(resolveConnectionSource).mockImplementation((_links, platform) => (platform === "facebook" ? "html" : null));
 
     const result = await runSocialProfilesComponent({ auditId: "audit-1", companyName: COMPANY, registeredDomain: DOMAIN, websiteUrl: WEBSITE });
-    expect(result.platforms.find((p) => p.platform === "facebook")!.connected).toBe("Yes");
-    expect(result.platforms.find((p) => p.platform === "instagram")!.connected).toBe("No");
+    const facebookOutcome = result.platforms.find((p) => p.platform === "facebook")!;
+    expect(facebookOutcome.connected).toBe("Yes");
+    expect(facebookOutcome.connectionSource).toBe("html");
+    const instagramOutcome = result.platforms.find((p) => p.platform === "instagram")!;
+    expect(instagramOutcome.connected).toBe("No");
+    expect(instagramOutcome.connectionSource).toBe(null);
 
     // Now simulate the website fetch itself failing -- connection becomes N/A for fallback-sourced profiles.
-    vi.mocked(fetchWebsiteSocialLinks).mockResolvedValue({ ok: false, linksByPlatform: {} as never, errorMessage: "fetch failed" });
+    vi.mocked(fetchWebsiteSocialLinks).mockResolvedValue({
+      ok: false,
+      linksByPlatform: {} as never,
+      schemaLinksByPlatform: {} as never,
+      errorMessage: "fetch failed",
+    });
     const result2 = await runSocialProfilesComponent({ auditId: "audit-2", companyName: COMPANY, registeredDomain: DOMAIN, websiteUrl: WEBSITE });
     expect(result2.platforms.find((p) => p.platform === "tiktok")!.connected).toBe("N/A");
     // Profile discovery must still continue despite the website fetch failure.
@@ -279,7 +299,7 @@ describe("runSocialProfilesComponent", () => {
       }
       return { ok: true, results: [], attempts: 1, errorMessage: null };
     });
-    vi.mocked(websiteLinksToProfile).mockReturnValue(false); // facebook not independently linked -> Connected No
+    vi.mocked(resolveConnectionSource).mockReturnValue(null); // facebook not independently linked -> Connected No
 
     const result = await runSocialProfilesComponent({ auditId: "audit-1", companyName: COMPANY, registeredDomain: DOMAIN, websiteUrl: WEBSITE });
 
@@ -295,5 +315,109 @@ describe("runSocialProfilesComponent", () => {
     vi.mocked(runSocialDiscoveryActor).mockResolvedValue({ ok: true, candidates: [], attempts: 1, errorMessage: null });
     await runSocialProfilesComponent({ auditId: "audit-1", companyName: COMPANY, registeredDomain: DOMAIN, websiteUrl: WEBSITE });
     expect(runSocialDiscoveryActor).toHaveBeenCalledTimes(1);
+  });
+
+  // -- SOCIAL-CONNECTION-005 -------------------------------------------------
+
+  it("passes registeredDomain through to fetchWebsiteSocialLinks (needed for schema domain tie-back)", async () => {
+    vi.mocked(runSocialDiscoveryActor).mockResolvedValue({ ok: true, candidates: [], attempts: 1, errorMessage: null });
+    await runSocialProfilesComponent({ auditId: "audit-1", companyName: COMPANY, registeredDomain: DOMAIN, websiteUrl: WEBSITE });
+    expect(fetchWebsiteSocialLinks).toHaveBeenCalledWith(WEBSITE, DOMAIN);
+  });
+
+  it("both HTML and schema confirm the same profile -> connected Yes, connectionSource html+schema", async () => {
+    vi.mocked(runSocialDiscoveryActor).mockResolvedValue({ ok: true, candidates: [], attempts: 1, errorMessage: null });
+    vi.mocked(searchGoogleOrganic).mockImplementation(async (query: string) => {
+      if (query.includes("linkedin.com")) {
+        return {
+          ok: true,
+          results: [{ title: "Acme - acmecorp.io", url: "https://www.linkedin.com/company/acme", domain: "linkedin.com", snippet: null }],
+          attempts: 1,
+          errorMessage: null,
+        };
+      }
+      return { ok: true, results: [], attempts: 1, errorMessage: null };
+    });
+    vi.mocked(resolveConnectionSource).mockImplementation((_links, platform) => (platform === "linkedin" ? "html+schema" : null));
+
+    const result = await runSocialProfilesComponent({ auditId: "audit-1", companyName: COMPANY, registeredDomain: DOMAIN, websiteUrl: WEBSITE });
+    const linkedin = result.platforms.find((p) => p.platform === "linkedin")!;
+    expect(linkedin.connected).toBe("Yes");
+    expect(linkedin.connectionSource).toBe("html+schema");
+  });
+
+  it("only externally discovered, no HTML/schema confirmation -> connected No, connectionSource null (Not Connected)", async () => {
+    vi.mocked(runSocialDiscoveryActor).mockResolvedValue({ ok: true, candidates: [], attempts: 1, errorMessage: null });
+    vi.mocked(searchGoogleOrganic).mockImplementation(async (query: string) => {
+      if (query.includes("youtube.com")) {
+        return {
+          ok: true,
+          results: [
+            { title: "Acme - acmecorp.io", url: "https://www.youtube.com/@acme", domain: "youtube.com", snippet: null },
+          ],
+          attempts: 1,
+          errorMessage: null,
+        };
+      }
+      return { ok: true, results: [], attempts: 1, errorMessage: null };
+    });
+    vi.mocked(resolveConnectionSource).mockReturnValue(null); // neither HTML nor schema confirms it
+
+    const result = await runSocialProfilesComponent({ auditId: "audit-1", companyName: COMPANY, registeredDomain: DOMAIN, websiteUrl: WEBSITE });
+    const youtube = result.platforms.find((p) => p.platform === "youtube")!;
+    expect(youtube.profileStatus).toBe("Found");
+    expect(youtube.connected).toBe("No");
+    expect(youtube.connectionSource).toBe(null);
+  });
+
+  it("Ocuco YouTube regression: schema-only confirmation -> Found, connected Yes, connectionSource schema", async () => {
+    vi.mocked(runSocialDiscoveryActor).mockResolvedValue({ ok: true, candidates: [], attempts: 1, errorMessage: null });
+    vi.mocked(searchGoogleOrganic).mockImplementation(async (query: string) => {
+      if (query.includes("youtube.com")) {
+        return {
+          ok: true,
+          results: [
+            {
+              title: "Ocuco (ocuco.com) - Software with Vision",
+              url: "https://www.youtube.com/@OcucoSoftwarewithVision",
+              domain: "youtube.com",
+              snippet: null,
+            },
+          ],
+          attempts: 1,
+          errorMessage: null,
+        };
+      }
+      return { ok: true, results: [], attempts: 1, errorMessage: null };
+    });
+    // The audited site's Organization JSON-LD sameAs confirmed this exact
+    // URL, but no visible <a href> anchor did -- schema-only confirmation.
+    vi.mocked(resolveConnectionSource).mockImplementation((_links, platform, profileUrl) =>
+      platform === "youtube" && profileUrl === "https://www.youtube.com/@OcucoSoftwarewithVision" ? "schema" : null
+    );
+
+    const result = await runSocialProfilesComponent({
+      auditId: "audit-ocuco",
+      companyName: "Ocuco",
+      registeredDomain: "ocuco.com",
+      websiteUrl: "https://www.ocuco.com",
+    });
+
+    const youtube = result.platforms.find((p) => p.platform === "youtube")!;
+    expect(youtube.profileStatus).toBe("Found");
+    expect(youtube.profileUrl).toBe("https://www.youtube.com/@OcucoSoftwarewithVision");
+    expect(youtube.connected).toBe("Yes");
+    expect(youtube.connectionSource).toBe("schema");
+  });
+
+  it("Not Found / Unverified / N/A — Could Not Verify outcomes carry connectionSource null (unchanged behavior)", async () => {
+    vi.mocked(runSocialDiscoveryActor).mockResolvedValue({ ok: true, candidates: [], attempts: 1, errorMessage: null });
+    vi.mocked(searchGoogleOrganic).mockResolvedValue({ ok: true, results: [], attempts: 1, errorMessage: null });
+
+    const result = await runSocialProfilesComponent({ auditId: "audit-1", companyName: COMPANY, registeredDomain: DOMAIN, websiteUrl: WEBSITE });
+    for (const p of result.platforms) {
+      expect(p.profileStatus).toBe("Not Found");
+      expect(p.connectionSource).toBe(null);
+    }
   });
 });

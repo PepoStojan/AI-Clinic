@@ -12,11 +12,12 @@ import {
 import { upsertComponentResult } from "../supabase/repositories/component-results";
 import { validateProfileIdentity, selectBestCandidate, type IdentityValidationResult } from "./identity-validation";
 import { PLATFORM_SEARCH_DOMAIN, type SocialPlatform } from "./platforms";
-import { fetchWebsiteSocialLinks, websiteLinksToProfile } from "./website-links";
+import { fetchWebsiteSocialLinks, resolveConnectionSource, type ConnectionSource } from "./website-links";
 
 export type ProfileStatus = "Found" | "Not Found" | "Unverified" | "N/A — Could Not Verify";
 export type ConnectedStatus = "Yes" | "No" | "N/A";
 export type ProfileSource = "apify" | "dataforseo_fallback" | "none";
+export type { ConnectionSource };
 
 export interface SocialPlatformOutcome {
   platform: SocialPlatform;
@@ -27,6 +28,10 @@ export interface SocialPlatformOutcome {
   evidence: string;
   matchedSignals: string[];
   unavailableReason: string | null;
+  // SOCIAL-CONNECTION-005: internal-only provenance for `connected`. Never
+  // rendered in the client PDF -- see html-template.ts's Social Profiles
+  // section, which is untouched by this change.
+  connectionSource: ConnectionSource;
 }
 
 export interface SocialProfilesSummary {
@@ -81,7 +86,11 @@ async function resolvePlatform(
   platform: SocialPlatform,
   apify: { ok: boolean; candidates: ApifyCandidate[] },
   input: { companyName: string; registeredDomain: string },
-  websiteLinks: { ok: boolean; linksByPlatform: Record<SocialPlatform, string[]> }
+  websiteLinks: {
+    ok: boolean;
+    linksByPlatform: Record<SocialPlatform, string[]>;
+    schemaLinksByPlatform: Record<SocialPlatform, string[]>;
+  }
 ): Promise<SocialPlatformOutcome> {
   const apifyCandidates = apify.ok
     ? validateCandidates(apify.candidates, platform, input.companyName, input.registeredDomain)
@@ -98,6 +107,7 @@ async function resolvePlatform(
       evidence: `Profile discovered via Apify, linked from the audited website.`,
       matchedSignals: apifyBest.matchedSignals,
       unavailableReason: null,
+      connectionSource: "html", // matches the existing "linked from the audited website" semantics above
     };
   }
 
@@ -119,11 +129,8 @@ async function resolvePlatform(
   const fallbackBest = selectBestCandidate(fallbackCandidates);
 
   if (fallbackBest?.verdict === "Confirmed") {
-    const connected = !websiteLinks.ok
-      ? "N/A"
-      : websiteLinksToProfile(websiteLinks.linksByPlatform, platform, fallbackBest.url)
-        ? "Yes"
-        : "No";
+    const connectionSource = websiteLinks.ok ? resolveConnectionSource(websiteLinks, platform, fallbackBest.url) : null;
+    const connected = !websiteLinks.ok ? "N/A" : connectionSource ? "Yes" : "No";
     return {
       platform,
       profileStatus: "Found",
@@ -138,6 +145,7 @@ async function resolvePlatform(
             : "Verified official profile found via search; website link could not be checked.",
       matchedSignals: fallbackBest.matchedSignals,
       unavailableReason: null,
+      connectionSource,
     };
   }
 
@@ -155,6 +163,7 @@ async function resolvePlatform(
       evidence: "We could not reliably check this platform (discovery provider failure).",
       matchedSignals: [],
       unavailableReason: fallback.errorMessage ?? "Discovery provider failure.",
+      connectionSource: null,
     };
   }
 
@@ -168,6 +177,7 @@ async function resolvePlatform(
       evidence: "We found a possible profile but could not confidently confirm it belongs to the audited company.",
       matchedSignals: [...(apifyBest?.matchedSignals ?? []), ...(fallbackBest?.matchedSignals ?? [])],
       unavailableReason: null,
+      connectionSource: null,
     };
   }
 
@@ -183,6 +193,7 @@ async function resolvePlatform(
       evidence: "We could not reliably check this platform (fallback search failure).",
       matchedSignals: [],
       unavailableReason: fallback.errorMessage,
+      connectionSource: null,
     };
   }
 
@@ -195,6 +206,7 @@ async function resolvePlatform(
     evidence: "We could not detect a verified profile.",
     matchedSignals: [],
     unavailableReason: null,
+    connectionSource: null,
   };
 }
 
@@ -216,7 +228,7 @@ export async function runSocialProfilesComponent(input: {
   // One Apify actor run covers all 8 platforms -- cost control.
   const [apify, websiteLinks] = await Promise.all([
     runSocialDiscoveryActor(input.websiteUrl),
-    fetchWebsiteSocialLinks(input.websiteUrl),
+    fetchWebsiteSocialLinks(input.websiteUrl, input.registeredDomain),
   ]);
 
   const outcomes = await Promise.all(
@@ -229,7 +241,12 @@ export async function runSocialProfilesComponent(input: {
         buildIdempotencyKey({ auditId: input.auditId, componentName: "social_profiles", targetId: null, checkKey: outcome.platform }),
         {
           status: checklistStatusFor(outcome),
-          result_json: { profileStatus: outcome.profileStatus, connected: outcome.connected, evidence: outcome.evidence },
+          result_json: {
+            profileStatus: outcome.profileStatus,
+            connected: outcome.connected,
+            evidence: outcome.evidence,
+            connectionSource: outcome.connectionSource,
+          },
           evidence_json: { profileUrl: outcome.profileUrl, source: outcome.source, matchedSignals: outcome.matchedSignals },
           last_error: outcome.unavailableReason,
           completed_at: new Date().toISOString(),
