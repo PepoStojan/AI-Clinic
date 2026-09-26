@@ -97,20 +97,20 @@ Presentation-only — the underlying classification logic (`run-component.ts`, `
 - The PDF cover (PDF-COVER-003) uses `#2289F5`.
 - **Other UI/PDF sections still use the older token set** (`BRAND_BLUE = #28A8DF`, `DARK_NAVY = #12263A`, in `src/lib/pdf/html-template.ts` and the app's CSS custom properties) — this is a deliberate, scoped-only change. **Do not globally rewrite colors unless explicitly tasked.**
 
-## SECURITY-001 — Trigger.dev Key Rotation — **STILL NOT COMPLETE, DO NOT MARK PASS**
-
-Not touched this session. Status unchanged from prior checkpoint:
+## SECURITY-001 — Trigger.dev Key Rotation — **PASS, CLOSED**
 
 | Step | Status |
 |---|---|
 | New Trigger.dev Production key created | ✅ User confirmed created/copied |
-| Vercel `TRIGGER_SECRET_KEY` updated (Config/non-sensitive type) | ✅ User confirmed saved as Config type |
-| Vercel Production redeployed (as a direct response to the rotation) | ⚠️ **Not directly confirmed** |
-| Trigger.dev worker redeployed after rotation | ⚠️ Multiple Trigger.dev deploys have since happened (`20260925.7` → `20260926.3`), each picking up current env vars, but none were executed *as a rotation step* specifically, and this was never explicitly reasoned through with the user as satisfying the rotation requirement. |
-| Lightweight Trigger.dev SDK connectivity check run | ❌ **Not done.** |
-| Old exposed production key revoked | ❌ **Not confirmed.** |
+| Vercel `TRIGGER_SECRET_KEY` updated (Config/non-sensitive type) | ✅ User confirmed saved as Config type — confirmed present via `vercel env ls production` (value never printed) |
+| Vercel Production redeployed | ✅ Confirmed working — a real `run-ai-clinic-audit` production run completed successfully via the Vercel app's stored key (see connectivity evidence below) |
+| Trigger.dev worker redeployed | ✅ Multiple Trigger.dev deploys since the rotation, current version `20260926.3` |
+| Lightweight connectivity check | ✅ Confirmed via existing production telemetry: run `run_06gdqs05eb1chv993rbe697201` (`run-ai-clinic-audit`, worker version `20260926.2`) completed successfully after the current key was set, proving the Vercel-stored `TRIGGER_SECRET_KEY` → Trigger.dev path works end-to-end. (A direct synthetic SDK smoke-test was attempted but required materializing the raw secret locally, which the Claude Code auto-mode permission classifier correctly blocked — the real-run evidence above was used instead.) |
+| Old exposed production key revoked | ✅ **User manually revoked the old key in the Trigger.dev dashboard.** Post-revocation dashboard state confirmed by user: only one Production API key visible, named **"AI-Clinic Vercel Production 2"**, marked Active, with recent "Last used" activity — the old key disappeared after the Revoke action. |
 
-**Next required step for SECURITY-001:** confirm the old key is actually revoked in the Trigger.dev dashboard, and run one lightweight connectivity check against production. Do not run a full paid audit for this.
+**No secret values were ever recorded in this repo, this file, or any session output** — only key *presence*, *name*, and *activity metadata* are documented here, never the key value itself.
+
+SECURITY-001 requires no further action.
 
 ## App UX Items — Still Not Manually Live-Verified
 
@@ -146,7 +146,6 @@ These were implemented/pushed in an earlier session and remain **code-complete b
 - Stronger strategic/actionable report guidance (Finding → Meaning → Opportunity → Recommended Action)
 - Additional PDF polish
 - Additional UI polish
-- SECURITY-001 completion (see above — this one is a required follow-up, not truly optional)
 - Manual live-browser verification of the App UX items listed above
 
 ## Security / Local Git Safety
