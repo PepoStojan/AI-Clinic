@@ -420,4 +420,116 @@ describe("runSocialProfilesComponent", () => {
       expect(p.connectionSource).toBe(null);
     }
   });
+
+  // -- SOCIAL-CONNECTION-007: schema corroboration for Unverified candidates -
+
+  const UNVERIFIED_YOUTUBE_URL = "https://www.youtube.com/@RandomChannelXYZ";
+
+  function mockUnverifiedYoutubeCandidate() {
+    vi.mocked(runSocialDiscoveryActor).mockResolvedValue({ ok: true, candidates: [], attempts: 1, errorMessage: null });
+    vi.mocked(searchGoogleOrganic).mockImplementation(async (query: string) => {
+      if (query.includes("youtube.com")) {
+        return {
+          ok: true,
+          // Brand name appears in the title only -- no slug/domain
+          // corroboration -- so validateProfileIdentity() (real, unmocked)
+          // classifies this "Unverified", never "Confirmed".
+          results: [{ title: "Acme Fan Channel", url: UNVERIFIED_YOUTUBE_URL, domain: "youtube.com", snippet: null }],
+          attempts: 1,
+          errorMessage: null,
+        };
+      }
+      return { ok: true, results: [], attempts: 1, errorMessage: null };
+    });
+    vi.mocked(fetchWebsiteSocialLinks).mockResolvedValue({
+      ok: true,
+      linksByPlatform: {} as never,
+      schemaLinksByPlatform: {} as never,
+      errorMessage: null,
+    });
+  }
+
+  it("Ocuco-pattern regression: Unverified candidate + exact schema sameAs match -> Found / Yes / schema, profileUrl preserved", async () => {
+    mockUnverifiedYoutubeCandidate();
+    vi.mocked(resolveConnectionSource).mockImplementation((_links, platform, profileUrl) =>
+      platform === "youtube" && profileUrl === UNVERIFIED_YOUTUBE_URL ? "schema" : null
+    );
+
+    const result = await runSocialProfilesComponent({ auditId: "audit-1", companyName: COMPANY, registeredDomain: DOMAIN, websiteUrl: WEBSITE });
+
+    const youtube = result.platforms.find((p) => p.platform === "youtube")!;
+    expect(youtube.profileStatus).toBe("Found");
+    expect(youtube.connected).toBe("Yes");
+    expect(youtube.connectionSource).toBe("schema");
+    expect(youtube.profileUrl).toBe(UNVERIFIED_YOUTUBE_URL);
+    expect(youtube.matchedSignals).toContain("corroborated by validated first-party schema sameAs");
+  });
+
+  it("Unverified candidate + different schema handle -> remains Unverified", async () => {
+    mockUnverifiedYoutubeCandidate();
+    // Schema declares a DIFFERENT youtube handle than the discovered candidate.
+    vi.mocked(resolveConnectionSource).mockImplementation((_links, platform, profileUrl) =>
+      platform === "youtube" && profileUrl === "https://www.youtube.com/@SomeOtherOfficialHandle" ? "schema" : null
+    );
+
+    const result = await runSocialProfilesComponent({ auditId: "audit-1", companyName: COMPANY, registeredDomain: DOMAIN, websiteUrl: WEBSITE });
+    const youtube = result.platforms.find((p) => p.platform === "youtube")!;
+    expect(youtube.profileStatus).toBe("Unverified");
+    expect(youtube.connected).toBe("N/A");
+    expect(youtube.connectionSource).toBe(null);
+    expect(youtube.profileUrl).toBe(null);
+  });
+
+  it("Unverified candidate + same platform but no URL-level schema match -> remains Unverified (platform alone never force-matches)", async () => {
+    mockUnverifiedYoutubeCandidate();
+    // resolveConnectionSource sees the correct platform but the exact URL
+    // never matches anything in schema/html -- returns null, as the real
+    // (unmocked) implementation would for a same-platform-only collision.
+    vi.mocked(resolveConnectionSource).mockReturnValue(null);
+
+    const result = await runSocialProfilesComponent({ auditId: "audit-1", companyName: COMPANY, registeredDomain: DOMAIN, websiteUrl: WEBSITE });
+    const youtube = result.platforms.find((p) => p.platform === "youtube")!;
+    expect(youtube.profileStatus).toBe("Unverified");
+    expect(youtube.connectionSource).toBe(null);
+  });
+
+  it("Unverified candidate + invalid/wrong-domain schema -> remains Unverified", async () => {
+    mockUnverifiedYoutubeCandidate();
+    // Simulates website-links.ts's own domain-tie-back safeguard having
+    // already rejected an unrelated Organization's sameAs -- from this
+    // orchestration layer's point of view that's indistinguishable from
+    // "no schema corroboration," i.e. resolveConnectionSource returns null.
+    vi.mocked(resolveConnectionSource).mockReturnValue(null);
+
+    const result = await runSocialProfilesComponent({ auditId: "audit-1", companyName: COMPANY, registeredDomain: DOMAIN, websiteUrl: WEBSITE });
+    const youtube = result.platforms.find((p) => p.platform === "youtube")!;
+    expect(youtube.profileStatus).toBe("Unverified");
+    expect(youtube.connected).toBe("N/A");
+  });
+
+  it("non-promoted Unverified candidate URL is preserved internally (candidateProfileUrl) but never surfaces as profileUrl", async () => {
+    mockUnverifiedYoutubeCandidate();
+    vi.mocked(resolveConnectionSource).mockReturnValue(null);
+
+    const result = await runSocialProfilesComponent({ auditId: "audit-1", companyName: COMPANY, registeredDomain: DOMAIN, websiteUrl: WEBSITE });
+    const youtube = result.platforms.find((p) => p.platform === "youtube")!;
+    expect(youtube.profileUrl).toBe(null); // what the PDF/client-facing layer reads
+    expect(youtube.candidateProfileUrl).toBe(UNVERIFIED_YOUTUBE_URL); // internal/debug-only
+  });
+
+  it("Confirmed-candidate behavior is unaffected by the new corroboration branch (early return, corroboration never runs)", async () => {
+    vi.mocked(runSocialDiscoveryActor).mockResolvedValue({
+      ok: true,
+      candidates: [{ platform: "linkedin", url: "https://linkedin.com/company/acme", title: "Acme | LinkedIn" }],
+      attempts: 1,
+      errorMessage: null,
+    });
+    vi.mocked(resolveConnectionSource).mockReturnValue(null); // should never even be consulted for the Confirmed path
+
+    const result = await runSocialProfilesComponent({ auditId: "audit-1", companyName: COMPANY, registeredDomain: DOMAIN, websiteUrl: WEBSITE });
+    const linkedin = result.platforms.find((p) => p.platform === "linkedin")!;
+    expect(linkedin.profileStatus).toBe("Found");
+    expect(linkedin.connected).toBe("Yes");
+    expect(linkedin.connectionSource).toBe("html"); // Apify-confirmed path's existing fixed semantics, untouched
+  });
 });

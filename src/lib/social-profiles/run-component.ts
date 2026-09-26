@@ -32,6 +32,11 @@ export interface SocialPlatformOutcome {
   // rendered in the client PDF -- see html-template.ts's Social Profiles
   // section, which is untouched by this change.
   connectionSource: ConnectionSource;
+  // SOCIAL-CONNECTION-007: internal-only, debug-oriented record of the top
+  // candidate URL for a still-Unverified outcome (never surfaced as
+  // `profileUrl`, never rendered in the PDF -- html-template.ts is
+  // untouched and doesn't read this field).
+  candidateProfileUrl?: string | null;
 }
 
 export interface SocialProfilesSummary {
@@ -168,6 +173,49 @@ async function resolvePlatform(
   }
 
   if (anyUnverified) {
+    // SOCIAL-CONNECTION-007: validateProfileIdentity()'s verdict is never
+    // reopened or reconsidered here -- this only asks a narrower, separate
+    // question of an already-Unverified candidate: does the audited site's
+    // OWN validated first-party schema (Organization/Corporation/
+    // LocalBusiness sameAs, already domain-tied by
+    // extractSchemaSocialLinks) declare this exact profile URL as its
+    // official identity? Only a schema match corroborates (a bare HTML
+    // anchor match alone does NOT promote here -- out of scope for this
+    // change). Checked against both candidates independently since Apify
+    // and the DataForSEO fallback can each carry their own Unverified URL.
+    const unverifiedCandidates = [
+      apifyBest?.verdict === "Unverified" ? { candidate: apifyBest, source: "apify" as const } : null,
+      fallbackBest?.verdict === "Unverified" ? { candidate: fallbackBest, source: "dataforseo_fallback" as const } : null,
+    ].filter((c): c is { candidate: CandidateWithVerdict; source: "apify" | "dataforseo_fallback" } => c !== null);
+
+    if (websiteLinks.ok) {
+      for (const { candidate, source } of unverifiedCandidates) {
+        const connectionSource = resolveConnectionSource(websiteLinks, platform, candidate.url);
+        if (connectionSource === "schema" || connectionSource === "html+schema") {
+          return {
+            platform,
+            profileStatus: "Found",
+            profileUrl: candidate.url,
+            connected: "Yes",
+            source,
+            evidence:
+              "Profile identity was not independently confirmed by discovery alone, but the audited website's own " +
+              "structured data (Organization/Corporation/LocalBusiness sameAs) declares this exact profile as official.",
+            matchedSignals: [...candidate.matchedSignals, "corroborated by validated first-party schema sameAs"],
+            unavailableReason: null,
+            connectionSource,
+          };
+        }
+      }
+    }
+
+    // No schema corroboration -- existing Unverified behavior, unchanged.
+    // The top candidate URL is preserved internally (debug-only, never
+    // rendered) so a future corroboration pass doesn't need to re-derive
+    // it; profileUrl itself stays null so nothing unverified ever leaks
+    // client-side.
+    const candidateProfileUrl = unverifiedCandidates[0]?.candidate.url ?? null;
+
     return {
       platform,
       profileStatus: "Unverified",
@@ -178,6 +226,7 @@ async function resolvePlatform(
       matchedSignals: [...(apifyBest?.matchedSignals ?? []), ...(fallbackBest?.matchedSignals ?? [])],
       unavailableReason: null,
       connectionSource: null,
+      candidateProfileUrl,
     };
   }
 
@@ -246,6 +295,7 @@ export async function runSocialProfilesComponent(input: {
             connected: outcome.connected,
             evidence: outcome.evidence,
             connectionSource: outcome.connectionSource,
+            candidateProfileUrl: outcome.candidateProfileUrl ?? null,
           },
           evidence_json: { profileUrl: outcome.profileUrl, source: outcome.source, matchedSignals: outcome.matchedSignals },
           last_error: outcome.unavailableReason,
