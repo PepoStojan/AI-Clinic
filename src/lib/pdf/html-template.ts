@@ -58,13 +58,18 @@ function formatDate(iso: string | null): string {
 interface ProviderDisplay {
   label: string;
   logo: string | null;
+  // PDF-BRAND-005: Gemini and Claude's source logos render visually smaller
+  // than ChatGPT/Google AI at the same shared box size -- this opts only
+  // those two providers into a larger logo box (see .provider-logo-emphasize),
+  // never changing the shared size used by every other provider.
+  emphasizeLogo?: boolean;
 }
 
 const PROVIDER_DISPLAY: Record<string, ProviderDisplay> = {
   openai: { label: "ChatGPT", logo: CHATGPT_LOGO_DATA_URI },
   chatgpt: { label: "ChatGPT", logo: CHATGPT_LOGO_DATA_URI },
-  claude: { label: "Claude", logo: CLAUDE_LOGO_DATA_URI },
-  gemini: { label: "Gemini", logo: GEMINI_LOGO_DATA_URI },
+  claude: { label: "Claude", logo: CLAUDE_LOGO_DATA_URI, emphasizeLogo: true },
+  gemini: { label: "Gemini", logo: GEMINI_LOGO_DATA_URI, emphasizeLogo: true },
   google: { label: "Google AI", logo: GOOGLE_AI_LOGO_DATA_URI },
   google_ai: { label: "Google AI", logo: GOOGLE_AI_LOGO_DATA_URI },
 };
@@ -75,7 +80,8 @@ function providerDisplay(providerKey: string): ProviderDisplay {
 
 function providerLogo(display: ProviderDisplay): string {
   if (display.logo) {
-    return `<img class="provider-logo" src="${display.logo}" alt="${escapeHtml(display.label)}" />`;
+    const logoClass = display.emphasizeLogo ? "provider-logo provider-logo-emphasize" : "provider-logo";
+    return `<img class="${logoClass}" src="${display.logo}" alt="${escapeHtml(display.label)}" />`;
   }
   return `<div class="provider-logo-fallback">${escapeHtml(display.label.slice(0, 1))}</div>`;
 }
@@ -760,6 +766,10 @@ const STYLES = `
 
   /* -- Provider logos -- */
   .provider-logo { width: 26px; height: 26px; object-fit: contain; flex: none; }
+  /* PDF-BRAND-005: Gemini/Claude only, ~40% larger than the shared 26px box
+     -- aspect ratio preserved via object-fit:contain (inherited), no
+     stretching/clipping. Every other provider keeps the 26px default. */
+  .provider-logo-emphasize { width: 36px; height: 36px; }
   .provider-logo-fallback {
     width: 26px; height: 26px; border-radius: 50%; background: ${NEUTRAL_BG};
     display: flex; align-items: center; justify-content: center;
@@ -789,6 +799,10 @@ const STYLES = `
   .pv-providers { margin-top: 12px; display: flex; flex-direction: column; gap: 9px; }
   .pv-row { display: grid; grid-template-columns: 22px 76px auto 1fr; align-items: center; gap: 10px; padding-top: 9px; border-top: 1px solid ${NEUTRAL_BORDER_SUBTLE}; }
   .pv-providers .pv-row:first-child { border-top: none; padding-top: 0; }
+  /* PDF-BRAND-005: this fixed-width grid column (22px, see .pv-row above)
+     intentionally does NOT get the Gemini/Claude emphasize boost -- the
+     row layout must not change, so higher-specificity selector wins here
+     and keeps every provider logo, Gemini/Claude included, at 18px. */
   .pv-row .provider-logo, .pv-row .provider-logo-fallback { width: 18px; height: 18px; }
   .pv-provider-name { font-size: 11px; font-weight: 600; color: ${DARK_NAVY}; }
   .pv-evidence { font-size: 10.5px; color: ${MUTED_TEXT}; }
