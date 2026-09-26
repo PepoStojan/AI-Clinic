@@ -173,4 +173,76 @@ describe("buildReportHtml", () => {
     const html = buildReportHtml(baseReport()).toLowerCase();
     expect(html).not.toMatch(/star rating|review count|\d+\s*reviews/);
   });
+
+  describe("SOCIAL-LOGIC-002 -- per-platform display mapping", () => {
+    function socialSection(platform: { platform: string; profileStatus: string; connected: string; profileUrl?: string | null }) {
+      const report = baseReport();
+      report.component_results.social_profiles!.findings = { platforms: [platform] };
+      const html = buildReportHtml(report);
+      // "Social Profiles" also appears as the Executive Summary stat-card
+      // label -- anchor on the matrix section heading specifically.
+      const sectionStart = html.indexOf("Social &amp; Third-Party Presence");
+      return html.slice(sectionStart, html.indexOf("Third-Party Listings", sectionStart));
+    }
+
+    it("Found + Connected Yes displays as Present, styled green", () => {
+      const section = socialSection({ platform: "linkedin", profileStatus: "Found", connected: "Yes", profileUrl: "https://linkedin.com/company/acme" });
+      expect(section).toContain("Present");
+      expect(section).not.toContain(">Missing<");
+      expect(section).toContain("Connected to website");
+      expect(section).toMatch(/Present[\s\S]*?background:#1F9D6B|background:#1F9D6B[\s\S]*?Present/);
+    });
+
+    it("Found + Connected No displays as Missing, not Present", () => {
+      const section = socialSection({ platform: "facebook", profileStatus: "Found", connected: "No", profileUrl: "https://facebook.com/acme" });
+      expect(section).toContain("Missing");
+      expect(section).not.toContain(">Present<");
+      expect(section).toContain("Found, not connected");
+      // Raw evidence (the discovered URL) is preserved even though the platform is not Present.
+      expect(section).toContain("https://facebook.com/acme");
+    });
+
+    it("Not Found displays as Missing", () => {
+      const section = socialSection({ platform: "instagram", profileStatus: "Not Found", connected: "N/A" });
+      expect(section).toContain("Missing");
+      expect(section).toContain("No profile found");
+    });
+
+    it("Unverified displays as Missing, never as Present", () => {
+      const section = socialSection({ platform: "tiktok", profileStatus: "Unverified", connected: "N/A" });
+      expect(section).toContain("Missing");
+      expect(section).not.toContain(">Present<");
+      expect(section).toContain("Possible match, unconfirmed");
+    });
+
+    it("N/A -- Could Not Verify displays as neutral Could Not Verify, never Missing or Present", () => {
+      const section = socialSection({ platform: "youtube", profileStatus: "N/A — Could Not Verify", connected: "N/A" });
+      expect(section).toContain("Could Not Verify");
+      expect(section).not.toContain(">Missing<");
+      expect(section).not.toContain(">Present<");
+      expect(section).toContain("Discovery could not be verified");
+      // Neutral dot color, not the attention (amber) color.
+      expect(section).toMatch(/Could Not Verify[\s\S]*?background:#94A3B8|background:#94A3B8[\s\S]*?Could Not Verify/);
+    });
+  });
+
+  describe("SOCIAL-LOGIC-002 -- Executive Summary headline", () => {
+    it("headline uses profiles_connected (present), not profiles_found, with discovered count as secondary context", () => {
+      const report = baseReport();
+      report.executive_fact_counts.social_profiles = {
+        profiles_found: 4,
+        profiles_connected: 2,
+        profiles_not_found: 4,
+        profiles_unverified: 0,
+        profiles_could_not_verify: 0,
+        total_platforms: 8,
+      };
+      const html = buildReportHtml(report);
+      expect(html).toContain("2 / 8");
+      expect(html).toContain("profiles present");
+      expect(html).toContain("4 discovered");
+      // The old misleading headline (raw found count as the primary number) must not appear.
+      expect(html).not.toContain("4 / 8");
+    });
+  });
 });

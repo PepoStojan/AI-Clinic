@@ -91,6 +91,7 @@ const GOOD_STATUSES = new Set([
   "Found",
   "Yes",
   "Allowed",
+  "Present", // SOCIAL-LOGIC-002 display mapping -- Found + Connected Yes only
 ]);
 const NEUTRAL_STATUSES = new Set([
   "No Result",
@@ -98,6 +99,7 @@ const NEUTRAL_STATUSES = new Set([
   "N/A",
   "Cannot Verify",
   "Not Found", // robots.txt/llms.txt file absence specifically -- handled per-section, see llmsTxtStatusDot
+  "Could Not Verify", // SOCIAL-LOGIC-002 display mapping -- neutral, never shown as Missing
   "—",
 ]);
 
@@ -213,10 +215,13 @@ function renderExecutiveSummary(report: CanonicalReport): string {
           `${c.prompt_visibility.positive_checks} of ${c.prompt_visibility.valid_checks} valid checks positive`
         );
 
+  // SOCIAL-LOGIC-002: the headline must reflect PRESENT (Found + Connected
+  // Yes) profiles only -- a discovered-but-unconnected profile is never
+  // "present." profiles_found is shown only as secondary discovery context.
   const socialCard = statCard(
     "Social Profiles",
-    `${c.social_profiles.profiles_found} / ${c.social_profiles.total_platforms}`,
-    `platforms found · ${c.social_profiles.profiles_connected} connected to the website`
+    `${c.social_profiles.profiles_connected} / ${c.social_profiles.total_platforms}`,
+    `profiles present · ${c.social_profiles.profiles_found} discovered`
   );
 
   const directoriesCard = statCard(
@@ -412,6 +417,29 @@ function socialPlatformLogo(platformKey: string): string {
   return `<div class="platform-logo-fallback">${escapeHtml(platformName(platformKey).slice(0, 1))}</div>`;
 }
 
+// SOCIAL-LOGIC-002: pure presentation mapping only -- never touches the
+// underlying profileStatus/connected values, never recomputes them. A
+// profile counts as PRESENT only when it was Found AND connected to the
+// audited website; everything else the component can produce (Found but
+// not connected, Not Found, Unverified) displays as Missing, never as a
+// false Present. Could Not Verify stays neutral, never shown as Missing.
+function socialDisplayStatus(profileStatus: string, connected: string): "Present" | "Missing" | "Could Not Verify" {
+  if (profileStatus === "N/A — Could Not Verify") return "Could Not Verify";
+  if (profileStatus === "Found" && connected === "Yes") return "Present";
+  return "Missing";
+}
+
+// Raw-evidence detail line shown alongside the derived Status badge --
+// keeps the underlying profileStatus/connected nuance visible in the PDF
+// without ever letting it be mistaken for the primary display status.
+function socialDetailText(profileStatus: string, connected: string): string {
+  if (profileStatus === "N/A — Could Not Verify") return "Discovery could not be verified";
+  if (profileStatus === "Found" && connected === "Yes") return "Connected to website";
+  if (profileStatus === "Found" && connected === "No") return "Found, not connected";
+  if (profileStatus === "Unverified") return "Possible match, unconfirmed";
+  return "No profile found"; // Not Found
+}
+
 function renderSocialAndDirectories(report: CanonicalReport): string {
   const socialFindings = report.component_results.social_profiles?.findings as
     | { platforms?: SocialFinding[] }
@@ -421,17 +449,19 @@ function renderSocialAndDirectories(report: CanonicalReport): string {
     | undefined;
 
   const socialRows = (socialFindings?.platforms ?? [])
-    .map(
-      (p) => `
+    .map((p) => {
+      const displayStatus = socialDisplayStatus(p.profileStatus, p.connected);
+      const detailText = socialDetailText(p.profileStatus, p.connected);
+      return `
       <div class="matrix-item">
         <div class="matrix-row-3">
           <div class="matrix-platform">${socialPlatformLogo(p.platform)}${escapeHtml(platformName(p.platform))}</div>
-          <div>${statusBadge(p.profileStatus)}</div>
-          <div>${statusBadge(p.connected)}</div>
+          <div>${statusBadge(displayStatus)}</div>
+          <div class="matrix-detail">${escapeHtml(detailText)}</div>
         </div>
         ${p.profileUrl ? `<div class="matrix-url wrap">${escapeHtml(p.profileUrl)}</div>` : ""}
-      </div>`
-    )
+      </div>`;
+    })
     .join("");
 
   const directoryCards = (directoryFindings?.platforms ?? [])
@@ -453,7 +483,7 @@ function renderSocialAndDirectories(report: CanonicalReport): string {
       <h2 class="section-heading">Social Profiles</h2>
       <div class="matrix">
         <div class="matrix-row-3 matrix-head">
-          <div>Platform</div><div>Profile</div><div>Connected</div>
+          <div>Platform</div><div>Status</div><div>Detail</div>
         </div>
         ${socialRows || `<div class="empty-state">No social profile results available.</div>`}
       </div>
@@ -777,6 +807,7 @@ const STYLES = `
     font-size: 9px; font-weight: 700; color: ${MUTED_TEXT}; flex: none;
   }
   .matrix-url { padding: 0 16px 12px; margin-top: -2px; font-size: 10.5px; color: ${LABEL_GRAY}; }
+  .matrix-detail { font-size: 10.5px; color: ${MUTED_TEXT}; }
 
   /* -- Directory listing cards -- */
   .listing-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
