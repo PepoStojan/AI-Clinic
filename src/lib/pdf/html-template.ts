@@ -319,6 +319,7 @@ interface PromptVisibilityFinding {
   provider: string;
   mentionClass: string;
   evidence?: string;
+  otherBrandsMentioned?: string[];
 }
 
 function renderPromptVisibility(report: CanonicalReport): string {
@@ -351,12 +352,17 @@ function renderPromptVisibility(report: CanonicalReport): string {
       const providerRows = g.rows
         .map((r) => {
           const display = providerDisplay(r.provider);
+          const otherBrands =
+            r.mentionClass === "Not Mentioned" && r.otherBrandsMentioned && r.otherBrandsMentioned.length > 0
+              ? `<div class="pv-other-brands">Other brands mentioned: ${r.otherBrandsMentioned.map((b) => escapeHtml(b)).join(" · ")}</div>`
+              : "";
           return `
           <div class="pv-row">
             ${providerLogo(display)}
             <div class="pv-provider-name">${escapeHtml(display.label)}</div>
             ${statusBadge(r.mentionClass)}
             <div class="pv-evidence wrap">${escapeHtml(r.evidence ?? "")}</div>
+            ${otherBrands}
           </div>`;
         })
         .join("");
@@ -827,6 +833,10 @@ const STYLES = `
   .pv-row .provider-logo, .pv-row .provider-logo-fallback { width: 18px; height: 18px; }
   .pv-provider-name { font-size: 11px; font-weight: 600; color: ${DARK_NAVY}; }
   .pv-evidence { font-size: 10.5px; color: ${MUTED_TEXT}; }
+  /* PROMPT-COMPETITORS-002: 5th grid child -- .pv-row is a fixed 4-column
+     grid (22px 76px auto 1fr, see above), so this must span the full row
+     on its own implicit line rather than shifting into column 1 only. */
+  .pv-other-brands { grid-column: 1 / -1; font-size: 10.5px; color: ${MUTED_TEXT}; margin-top: 2px; }
 
   /* -- Social matrix -- */
   .matrix { border: 1px solid ${NEUTRAL_BORDER}; border-radius: 14px; overflow: hidden; }

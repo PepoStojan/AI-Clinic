@@ -10,6 +10,7 @@ import {
 } from "../supabase/repositories/checklist-items";
 import { upsertComponentResult } from "../supabase/repositories/component-results";
 import { classifyEntityMatch } from "./classifier";
+import { extractOtherBrands } from "./other-brands";
 import {
   buildCrossRecordUrlIndex,
   CORROBORATION_ELIGIBLE_STATUSES,
@@ -50,6 +51,9 @@ export interface PromptVisibilityProviderOutcome {
   errorMessage: string | null;
   attempts: number;
   crossRecordCorroboration?: CrossRecordCorroboration;
+  // PROMPT-COMPETITORS-002: derived display-only field, populated only when
+  // mentionClass === "Not Mentioned". Never influences mentionClass/status.
+  otherBrandsMentioned?: string[];
 }
 
 export interface PromptVisibilitySummary {
@@ -219,7 +223,7 @@ export async function runPromptVisibilityComponent(input: {
   }));
   const urlIndex = buildCrossRecordUrlIndex(corroborationRecords, profile);
 
-  const outcomes: PromptVisibilityProviderOutcome[] = evaluations.map(({ run, evaluation, brandMention }, i) => {
+  const baseOutcomes: PromptVisibilityProviderOutcome[] = evaluations.map(({ run, evaluation, brandMention }, i) => {
     if (!run.ok || !evaluation) {
       return {
         targetId: run.targetId,
@@ -257,6 +261,20 @@ export async function runPromptVisibilityComponent(input: {
     };
   });
 
+  // PROMPT-COMPETITORS-002: derived display-only pass, strictly AFTER
+  // mentionClass has already been finalized above by the frozen
+  // VAL-003C-derived evaluateEntity()/classifyEntityMatch() path. Runs only
+  // for "Not Mentioned" outcomes (never Strong Mention/Mentioned/Cited
+  // Only/Ambiguous/No Result), at most one extraction call per such
+  // outcome, and can never change mentionClass/status/evidence.
+  const outcomes: PromptVisibilityProviderOutcome[] = await Promise.all(
+    baseOutcomes.map(async (outcome, i) => {
+      if (outcome.mentionClass !== "Not Mentioned") return outcome;
+      const otherBrandsMentioned = await extractOtherBrands(profile.brandName, rawRuns[i].text);
+      return otherBrandsMentioned.length > 0 ? { ...outcome, otherBrandsMentioned } : outcome;
+    })
+  );
+
   await Promise.all(
     outcomes.map((outcome) =>
       updateChecklistItemByIdempotencyKey(
@@ -272,6 +290,7 @@ export async function runPromptVisibilityComponent(input: {
             mentionClass: outcome.mentionClass,
             entityStatus: outcome.entityStatus,
             evidence: outcome.evidence,
+            otherBrandsMentioned: outcome.otherBrandsMentioned ?? [],
           },
           evidence_json: { citations: outcome.citations },
           retry_count: Math.max(0, outcome.attempts - 1),

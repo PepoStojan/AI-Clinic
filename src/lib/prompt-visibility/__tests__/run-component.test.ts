@@ -79,6 +79,9 @@ vi.mock("../../providers/dataforseo", () => ({
 vi.mock("../classifier", () => ({
   classifyEntityMatch: vi.fn(),
 }));
+vi.mock("../other-brands", () => ({
+  extractOtherBrands: vi.fn().mockResolvedValue([]),
+}));
 vi.mock("../../supabase/repositories/checklist-items", () => ({
   updateChecklistItemByIdempotencyKey: vi.fn().mockResolvedValue({}),
 }));
@@ -88,6 +91,7 @@ vi.mock("../../supabase/repositories/component-results", () => ({
 
 import { callGoogleAiMode, callLlmProvider } from "../../providers/dataforseo";
 import { classifyEntityMatch } from "../classifier";
+import { extractOtherBrands } from "../other-brands";
 import { updateChecklistItemByIdempotencyKey } from "../../supabase/repositories/checklist-items";
 import { upsertComponentResult } from "../../supabase/repositories/component-results";
 import { runPromptVisibilityComponent } from "../run-component";
@@ -228,5 +232,126 @@ describe("runPromptVisibilityComponent", () => {
     const idempotencyKeys = vi.mocked(updateChecklistItemByIdempotencyKey).mock.calls.map((c) => c[0]);
     const uniqueKeys = new Set(idempotencyKeys);
     expect(uniqueKeys.size).toBe(4); // one key per provider check, written twice each
+  });
+
+  // -- PROMPT-COMPETITORS-002 gating -----------------------------------------
+
+  it("extraction is called only for Not Mentioned outcomes, never for other mention classes", async () => {
+    vi.mocked(callLlmProvider).mockImplementation(async (providerKey) => {
+      if (providerKey === "chat_gpt") {
+        // Not Mentioned: no brand mention, no domain citation.
+        return {
+          parsed: { ok: true, text: "Widgets can be found from many manufacturers.", citations: [], cost: 0.001, noResultReason: null },
+          attempts: 1,
+          raw: {},
+        };
+      }
+      if (providerKey === "gemini") {
+        // Strong Mention: domain citation.
+        return {
+          parsed: {
+            ok: true,
+            text: "Acme is a widget company.",
+            citations: [{ title: "Acme site", url: "https://acme.example/about", domain: "acme.example" }],
+            cost: 0.001,
+            noResultReason: null,
+          },
+          attempts: 1,
+          raw: {},
+        };
+      }
+      // claude: Ambiguous (loose match only).
+      return {
+        parsed: { ok: true, text: "Acmes are common household items.", citations: [], cost: 0.001, noResultReason: null },
+        attempts: 1,
+        raw: {},
+      };
+    });
+    vi.mocked(callGoogleAiMode).mockResolvedValue({
+      // No Result.
+      parsed: { ok: false, text: "", citations: [], cost: null, noResultReason: "No AI Overview generated" },
+      attempts: 1,
+      raw: {},
+    });
+    vi.mocked(extractOtherBrands).mockResolvedValue(["Beta Co"]);
+
+    const result = await runPromptVisibilityComponent({
+      auditId: "audit-1",
+      companyName: "Acme",
+      registeredDomain: "acme.example",
+      targets: [{ id: "target-1", prompts: ["Best widget manufacturers"] }],
+    });
+
+    const chatgpt = result.providers.find((p) => p.provider === "chatgpt");
+    expect(chatgpt?.mentionClass).toBe("Not Mentioned");
+    expect(chatgpt?.otherBrandsMentioned).toEqual(["Beta Co"]);
+
+    const gemini = result.providers.find((p) => p.provider === "gemini");
+    expect(gemini?.mentionClass).toBe("Strong Mention");
+    expect(gemini?.otherBrandsMentioned).toBeUndefined();
+
+    const claude = result.providers.find((p) => p.provider === "claude");
+    expect(claude?.mentionClass).toBe("Ambiguous");
+    expect(claude?.otherBrandsMentioned).toBeUndefined();
+
+    const googleAi = result.providers.find((p) => p.provider === "google_ai");
+    expect(googleAi?.mentionClass).toBe("No Result");
+    expect(googleAi?.otherBrandsMentioned).toBeUndefined();
+
+    // Exactly one extraction call -- only for the single Not Mentioned outcome.
+    expect(extractOtherBrands).toHaveBeenCalledTimes(1);
+    expect(extractOtherBrands).toHaveBeenCalledWith("Acme", "Widgets can be found from many manufacturers.");
+  });
+
+  it("Not Mentioned with empty extraction result omits otherBrandsMentioned, never renders filler", async () => {
+    vi.mocked(callLlmProvider).mockResolvedValue({
+      parsed: { ok: true, text: "No relevant information found.", citations: [], cost: 0.001, noResultReason: null },
+      attempts: 1,
+      raw: {},
+    });
+    vi.mocked(callGoogleAiMode).mockResolvedValue({
+      parsed: { ok: true, text: "No relevant information found.", citations: [], cost: 0, noResultReason: null },
+      attempts: 1,
+      raw: {},
+    });
+    vi.mocked(extractOtherBrands).mockResolvedValue([]);
+
+    const result = await runPromptVisibilityComponent({
+      auditId: "audit-1",
+      companyName: "Acme",
+      registeredDomain: "acme.example",
+      targets: [{ id: "target-1", prompts: ["Best widget manufacturers"] }],
+    });
+
+    expect(result.providers.every((p) => p.mentionClass === "Not Mentioned")).toBe(true);
+    expect(result.providers.every((p) => p.otherBrandsMentioned === undefined)).toBe(true);
+    expect(extractOtherBrands).toHaveBeenCalledTimes(4);
+  });
+
+  it("existing mention classification is unchanged by the extraction pass (Not Mentioned reason/entityStatus intact)", async () => {
+    vi.mocked(callLlmProvider).mockResolvedValue({
+      parsed: { ok: true, text: "No relevant information found.", citations: [], cost: 0.001, noResultReason: null },
+      attempts: 1,
+      raw: {},
+    });
+    vi.mocked(callGoogleAiMode).mockResolvedValue({
+      parsed: { ok: true, text: "No relevant information found.", citations: [], cost: 0, noResultReason: null },
+      attempts: 1,
+      raw: {},
+    });
+    vi.mocked(extractOtherBrands).mockResolvedValue(["Beta Co", "Gamma Inc"]);
+
+    const result = await runPromptVisibilityComponent({
+      auditId: "audit-1",
+      companyName: "Acme",
+      registeredDomain: "acme.example",
+      targets: [{ id: "target-1", prompts: ["Best widget manufacturers"] }],
+    });
+
+    for (const p of result.providers) {
+      expect(p.mentionClass).toBe("Not Mentioned");
+      expect(p.entityStatus).toBe("No Entity Signal");
+      expect(classifyEntityMatch).not.toHaveBeenCalled();
+    }
   });
 });
