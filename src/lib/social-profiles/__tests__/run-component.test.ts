@@ -532,4 +532,137 @@ describe("runSocialProfilesComponent", () => {
     expect(linkedin.connected).toBe("Yes");
     expect(linkedin.connectionSource).toBe("html"); // Apify-confirmed path's existing fixed semantics, untouched
   });
+
+  // -- SOCIAL-CONNECTION-013: validated first-party schema as a direct
+  // discovery source when Apify + DataForSEO both come back completely
+  // empty (no Confirmed, no Unverified candidate at all -- the real
+  // AIC-2026-000014 Ocuco regression, where live discovery returned zero
+  // YouTube candidates despite the site's own schema declaring one). -----
+
+  it("no external candidate anywhere + exactly one schema sameAs URL -> Found / Yes / schema (the AIC-2026-000014 regression)", async () => {
+    vi.mocked(runSocialDiscoveryActor).mockResolvedValue({ ok: true, candidates: [], attempts: 1, errorMessage: null });
+    vi.mocked(searchGoogleOrganic).mockResolvedValue({ ok: true, results: [], attempts: 1, errorMessage: null });
+    vi.mocked(fetchWebsiteSocialLinks).mockResolvedValue({
+      ok: true,
+      linksByPlatform: {} as never,
+      schemaLinksByPlatform: { youtube: ["https://www.youtube.com/@OcucoSoftwarewithVision"] } as never,
+      errorMessage: null,
+    });
+
+    const result = await runSocialProfilesComponent({
+      auditId: "audit-ocuco",
+      companyName: "Ocuco",
+      registeredDomain: "ocuco.com",
+      websiteUrl: "https://www.ocuco.com",
+    });
+
+    const youtube = result.platforms.find((p) => p.platform === "youtube")!;
+    expect(youtube.profileStatus).toBe("Found");
+    expect(youtube.connected).toBe("Yes");
+    expect(youtube.connectionSource).toBe("schema");
+    expect(youtube.profileUrl).toBe("https://www.youtube.com/@OcucoSoftwarewithVision");
+    expect(youtube.source).toBe("schema");
+    expect(checklistStatusFor(youtube)).toBe("COMPLETED");
+
+    // Every other platform has no schema entry either -- unchanged Not Found.
+    const others = result.platforms.filter((p) => p.platform !== "youtube");
+    expect(others.every((p) => p.profileStatus === "Not Found")).toBe(true);
+  });
+
+  it("no external candidate + no schema entry -> Not Found, unchanged (SOCIAL-CONNECTION-013 does not fabricate a profile)", async () => {
+    vi.mocked(runSocialDiscoveryActor).mockResolvedValue({ ok: true, candidates: [], attempts: 1, errorMessage: null });
+    vi.mocked(searchGoogleOrganic).mockResolvedValue({ ok: true, results: [], attempts: 1, errorMessage: null });
+    vi.mocked(fetchWebsiteSocialLinks).mockResolvedValue({
+      ok: true,
+      linksByPlatform: {} as never,
+      schemaLinksByPlatform: {} as never, // no sameAs entry for any platform
+      errorMessage: null,
+    });
+
+    const result = await runSocialProfilesComponent({ auditId: "audit-1", companyName: COMPANY, registeredDomain: DOMAIN, websiteUrl: WEBSITE });
+    const youtube = result.platforms.find((p) => p.platform === "youtube")!;
+    expect(youtube.profileStatus).toBe("Not Found");
+    expect(youtube.connected).toBe("N/A");
+    expect(youtube.connectionSource).toBe(null);
+    expect(youtube.profileUrl).toBe(null);
+  });
+
+  it("no external candidate + two conflicting schema sameAs URLs for the same platform -> do NOT auto-promote, stays Not Found", async () => {
+    vi.mocked(runSocialDiscoveryActor).mockResolvedValue({ ok: true, candidates: [], attempts: 1, errorMessage: null });
+    vi.mocked(searchGoogleOrganic).mockResolvedValue({ ok: true, results: [], attempts: 1, errorMessage: null });
+    vi.mocked(fetchWebsiteSocialLinks).mockResolvedValue({
+      ok: true,
+      linksByPlatform: {} as never,
+      schemaLinksByPlatform: {
+        youtube: ["https://www.youtube.com/@OfficialHandle", "https://www.youtube.com/@AlsoDeclaredHandle"],
+      } as never,
+      errorMessage: null,
+    });
+
+    const result = await runSocialProfilesComponent({ auditId: "audit-1", companyName: COMPANY, registeredDomain: DOMAIN, websiteUrl: WEBSITE });
+    const youtube = result.platforms.find((p) => p.platform === "youtube")!;
+    expect(youtube.profileStatus).toBe("Not Found");
+    expect(youtube.connected).toBe("N/A");
+    expect(youtube.connectionSource).toBe(null);
+    expect(youtube.profileUrl).toBe(null);
+  });
+
+  it("website fetch itself failing (websiteLinks.ok = false) -> no schema source is consulted, stays Not Found", async () => {
+    vi.mocked(runSocialDiscoveryActor).mockResolvedValue({ ok: true, candidates: [], attempts: 1, errorMessage: null });
+    vi.mocked(searchGoogleOrganic).mockResolvedValue({ ok: true, results: [], attempts: 1, errorMessage: null });
+    vi.mocked(fetchWebsiteSocialLinks).mockResolvedValue({
+      ok: false,
+      linksByPlatform: {} as never,
+      schemaLinksByPlatform: { youtube: ["https://www.youtube.com/@OcucoSoftwarewithVision"] } as never,
+      errorMessage: "fetch failed",
+    });
+
+    const result = await runSocialProfilesComponent({ auditId: "audit-1", companyName: COMPANY, registeredDomain: DOMAIN, websiteUrl: WEBSITE });
+    const youtube = result.platforms.find((p) => p.platform === "youtube")!;
+    expect(youtube.profileStatus).toBe("Not Found");
+    expect(youtube.connectionSource).toBe(null);
+  });
+
+  it("non-YouTube platform: no external candidate + exactly one schema sameAs URL -> Found / Yes / schema (rule is platform-agnostic)", async () => {
+    vi.mocked(runSocialDiscoveryActor).mockResolvedValue({ ok: true, candidates: [], attempts: 1, errorMessage: null });
+    vi.mocked(searchGoogleOrganic).mockResolvedValue({ ok: true, results: [], attempts: 1, errorMessage: null });
+    vi.mocked(fetchWebsiteSocialLinks).mockResolvedValue({
+      ok: true,
+      linksByPlatform: {} as never,
+      schemaLinksByPlatform: { instagram: ["https://www.instagram.com/ocucoltd/"] } as never,
+      errorMessage: null,
+    });
+
+    const result = await runSocialProfilesComponent({ auditId: "audit-1", companyName: COMPANY, registeredDomain: DOMAIN, websiteUrl: WEBSITE });
+    const instagram = result.platforms.find((p) => p.platform === "instagram")!;
+    expect(instagram.profileStatus).toBe("Found");
+    expect(instagram.connected).toBe("Yes");
+    expect(instagram.connectionSource).toBe("schema");
+    expect(instagram.profileUrl).toBe("https://www.instagram.com/ocucoltd/");
+  });
+
+  it("a Confirmed Apify candidate on a different platform is unaffected by another platform's schema-only promotion", async () => {
+    vi.mocked(runSocialDiscoveryActor).mockResolvedValue({
+      ok: true,
+      candidates: [{ platform: "linkedin", url: "https://linkedin.com/company/acme", title: "Acme | LinkedIn" }],
+      attempts: 1,
+      errorMessage: null,
+    });
+    vi.mocked(searchGoogleOrganic).mockResolvedValue({ ok: true, results: [], attempts: 1, errorMessage: null });
+    vi.mocked(resolveConnectionSource).mockReturnValue(null);
+    vi.mocked(fetchWebsiteSocialLinks).mockResolvedValue({
+      ok: true,
+      linksByPlatform: {} as never,
+      schemaLinksByPlatform: { youtube: ["https://www.youtube.com/@OcucoSoftwarewithVision"] } as never,
+      errorMessage: null,
+    });
+
+    const result = await runSocialProfilesComponent({ auditId: "audit-1", companyName: COMPANY, registeredDomain: DOMAIN, websiteUrl: WEBSITE });
+    const linkedin = result.platforms.find((p) => p.platform === "linkedin")!;
+    const youtube = result.platforms.find((p) => p.platform === "youtube")!;
+    expect(linkedin.profileStatus).toBe("Found");
+    expect(linkedin.source).toBe("apify"); // untouched -- Confirmed path returns before this branch is ever reached
+    expect(youtube.profileStatus).toBe("Found");
+    expect(youtube.source).toBe("schema");
+  });
 });

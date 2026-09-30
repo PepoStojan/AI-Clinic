@@ -16,7 +16,7 @@ import { fetchWebsiteSocialLinks, resolveConnectionSource, type ConnectionSource
 
 export type ProfileStatus = "Found" | "Not Found" | "Unverified" | "N/A — Could Not Verify";
 export type ConnectedStatus = "Yes" | "No" | "N/A";
-export type ProfileSource = "apify" | "dataforseo_fallback" | "none";
+export type ProfileSource = "apify" | "dataforseo_fallback" | "schema" | "none";
 export type { ConnectionSource };
 
 export interface SocialPlatformOutcome {
@@ -244,6 +244,35 @@ async function resolvePlatform(
       unavailableReason: fallback.errorMessage,
       connectionSource: null,
     };
+  }
+
+  // SOCIAL-CONNECTION-013: Apify and the DataForSEO fallback both ran
+  // reliably and found nothing at all for this platform (no Confirmed, no
+  // Unverified candidate) -- fall back to the audited site's OWN validated
+  // first-party schema sameAs as a direct discovery source, not just a
+  // corroboration signal. Only promotes when the schema declares EXACTLY
+  // ONE URL for this platform (extractSchemaSocialLinks already restricts
+  // this to a trusted Organization/Corporation/LocalBusiness entity tied
+  // to the audited domain); two or more sameAs entries for the same
+  // platform are left unresolved -- there's no safe way to pick one
+  // without guessing, so existing Not Found behavior applies.
+  if (websiteLinks.ok) {
+    const schemaUrls = websiteLinks.schemaLinksByPlatform[platform] ?? [];
+    if (schemaUrls.length === 1) {
+      return {
+        platform,
+        profileStatus: "Found",
+        profileUrl: schemaUrls[0],
+        connected: "Yes",
+        source: "schema",
+        evidence:
+          "No independent discovery match was found, but the audited website's own structured data " +
+          "(Organization/Corporation/LocalBusiness sameAs) declares this exact profile as official.",
+        matchedSignals: ["declared in validated first-party schema sameAs"],
+        unavailableReason: null,
+        connectionSource: "schema",
+      };
+    }
   }
 
   return {
