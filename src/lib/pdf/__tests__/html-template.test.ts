@@ -164,9 +164,15 @@ describe("buildReportHtml", () => {
     expect(html).toContain("AIC-2026-000001");
   });
 
-  it("closing includes the exact locked CTA text", () => {
-    const html = buildReportHtml(baseReport());
-    expect(html).toContain("Want to understand what to address next and how?");
+  // PDF-BRAND-008: the generic closing.cta_text field is intentionally no
+  // longer rendered -- the new "Book a Call" CTA headline replaces its
+  // purpose. The canonical report field itself is untouched (still present
+  // on the report object below), this is presentation-only.
+  it("closing no longer renders the old generic cta_text -- the new CTA headline replaces it, the field itself is untouched", () => {
+    const report = baseReport();
+    expect(report.closing.cta_text).toBe("Want to understand what to address next and how?");
+    const html = buildReportHtml(report);
+    expect(html).not.toContain("Want to understand what to address next and how?");
   });
 
   describe("PDF-BRAND-006 -- SmartClick logo", () => {
@@ -195,6 +201,50 @@ describe("buildReportHtml", () => {
       expect(html).not.toContain("Recources");
       expect(html).toMatch(/<img class="cover-smartclick-logo" src="data:image\/svg\+xml;base64,[^"]+" alt="SmartClick" \/>/);
       expect(html).toMatch(/<img class="closing-smartclick-logo" src="data:image\/svg\+xml;base64,[^"]+" alt="SmartClick" \/>/);
+    });
+  });
+
+  describe("PDF-BRAND-008 -- SmartClick sizing, Book a Call CTA, AI disclosure", () => {
+    it("cover and closing SmartClick logos are sized 28px / 30px respectively", () => {
+      const html = buildReportHtml(baseReport());
+      expect(html).toContain(".cover-smartclick-logo { height: 28px;");
+      expect(html).toContain(".closing-smartclick-logo { height: 30px;");
+    });
+
+    it("every non-cover, non-closing content page carries a subtle 11px SmartClick footer", () => {
+      const html = buildReportHtml(baseReport());
+      expect(html).toContain(".content-footer-logo { height: 11px;");
+      // 6 content pages (Executive Summary, Brand Recognition, Prompt
+      // Visibility, Social & Directories, Technical, Key Gaps) each get
+      // exactly one footer -- cover and closing have their own branding
+      // and are not included.
+      const footerOccurrences = (html.match(/<div class="content-footer">/g) ?? []).length;
+      expect(footerOccurrences).toBe(6);
+    });
+
+    it("closing page renders a real clickable <a href> Book a Call button pointing at the correct URL", () => {
+      const html = buildReportHtml(baseReport());
+      expect(html).toMatch(/<a class="cta-button" href="https:\/\/smartclick\.agency\/contact-us\/">Book a Call<\/a>/);
+    });
+
+    it("closing page renders the CTA headline and AI Results & Limitations disclosure", () => {
+      const html = buildReportHtml(baseReport());
+      expect(html).toContain("Want to improve how your brand appears across AI systems?");
+      expect(html).toContain("AI Results &amp; Limitations");
+      expect(html).toContain("AI-generated responses are dynamic and may vary between requests");
+      expect(html).toContain("directional evidence and validated against primary sources where appropriate.");
+    });
+
+    it("Prompt Visibility page shows the point-in-time timing note near the heading", () => {
+      const html = buildReportHtml(baseReport());
+      const pvIdx = html.indexOf("Do you show up when prospects ask");
+      const section = html.slice(pvIdx, pvIdx + 400);
+      expect(section).toContain("Results reflect responses observed at the time of testing and may change over time.");
+    });
+
+    it("closing content stays within a single page section (no accidental second closing page)", () => {
+      const html = buildReportHtml(baseReport());
+      expect((html.match(/class="page closing"/g) ?? []).length).toBe(1);
     });
   });
 

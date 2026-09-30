@@ -25,6 +25,10 @@ import {
 } from "./logo-assets";
 
 const BRAND_BLUE = "#28A8DF";
+// PDF-BRAND-008: SmartClick's own brand blue, scoped ONLY to the Book a Call
+// CTA button -- the older BRAND_BLUE token above stays untouched everywhere
+// else, per the locked "don't globally rewrite colors" rule.
+const SMARTCLICK_BLUE = "#2289F5";
 const DARK_NAVY = "#12263A";
 const NEUTRAL_BG = "#F5F7FA";
 const NEUTRAL_BORDER = "#E2E8F0";
@@ -131,6 +135,19 @@ function statusBadge(status: string | null | undefined, colorOverride?: string):
 
 function card(title: string, bodyHtml: string): string {
   return `<div class="card"><h3>${escapeHtml(title)}</h3>${bodyHtml}</div>`;
+}
+
+// PDF-BRAND-008: subtle, low-weight SmartClick signature on inner content
+// pages -- absolutely positioned (see `.page { position: relative }` and
+// `.content-footer` below) so it never participates in document flow and
+// can never push/shift real report content, regardless of how dense a
+// given page is.
+function contentPageFooter(): string {
+  return `
+    <div class="content-footer">
+      <img class="content-footer-logo" src="${SMARTCLICK_LOGO_DATA_URI}" alt="SmartClick" />
+      smartclick.agency
+    </div>`;
 }
 
 // -- Cover -------------------------------------------------------------
@@ -269,6 +286,7 @@ function renderExecutiveSummary(report: CanonicalReport): string {
           <div class="highlight-label">Checks Unavailable</div>
         </div>
       </div>
+      ${contentPageFooter()}
     </section>`;
 }
 
@@ -308,6 +326,7 @@ function renderBrandRecognition(report: CanonicalReport): string {
       <div class="section-eyebrow">Brand Recognition</div>
       <h2 class="section-heading">Do AI systems know who you are</h2>
       <div class="br-list">${cards || `<div class="empty-state">No provider results available.</div>`}</div>
+      ${contentPageFooter()}
     </section>`;
 }
 
@@ -385,7 +404,9 @@ function renderPromptVisibility(report: CanonicalReport): string {
           ${pct === null ? `<span class="metric-sub">Not enough valid checks to measure</span>` : `Visible in <span class="pv-pct-value">${pct}%</span> of checks`}
         </div>
       </div>
+      <div class="pv-timing-note">Results reflect responses observed at the time of testing and may change over time.</div>
       <div class="pv-list">${cards || `<div class="empty-state">No prompt visibility results available.</div>`}</div>
+      ${contentPageFooter()}
     </section>`;
 }
 
@@ -518,6 +539,7 @@ function renderSocialAndDirectories(report: CanonicalReport): string {
       <div class="listing-grid">
         ${directoryCards || `<div class="empty-state">No directory results available.</div>`}
       </div>
+      ${contentPageFooter()}
     </section>`;
 }
 
@@ -564,6 +586,7 @@ function renderTechnical(report: CanonicalReport): string {
         ${card("robots.txt", statusBadge(robotsStatus, robotsStatus === "Not Found" || robotsStatus === "Cannot Verify" ? NEUTRAL_DOT : undefined))}
         ${card("llms.txt", `${statusBadge(llmsStatus, NEUTRAL_DOT)}<div class="metric-sub">Optional and experimental -- absence is not a required fix.</div>`)}
       </div>
+      ${contentPageFooter()}
     </section>`;
 }
 
@@ -599,6 +622,7 @@ function renderKeyGaps(report: CanonicalReport): string {
         <div class="section-eyebrow">Key Gaps</div>
         <h2 class="section-heading">Expert interpretation</h2>
         <div class="empty-state">No confirmed gaps were identified in the audited checks.</div>
+        ${contentPageFooter()}
       </section>`;
   }
 
@@ -610,33 +634,54 @@ function renderKeyGaps(report: CanonicalReport): string {
       <div class="section-eyebrow">Key Gaps</div>
       <h2 class="section-heading">Expert interpretation</h2>
       <div class="gap-list">${cards}</div>
+      ${contentPageFooter()}
     </section>`;
 }
 
 // -- Closing -----------------------------------------------------------
 
+// PDF-BRAND-008: natural document-flow layout (min-height, not a rigid
+// height:100vh two-point flex split) -- CTA headline, Book a Call button,
+// and the AI Results & Limitations disclosure all add real content height
+// that a fixed-viewport space-between layout can't safely absorb. The
+// generic report.closing.cta_text field is intentionally NOT rendered here
+// anymore (the new CTA headline below replaces its purpose) -- the field
+// itself is untouched in canonical_report_json, this is presentation-only.
+const AI_DISCLOSURE_COPY =
+  "AI-generated responses are dynamic and may vary between requests depending on the model, timing, prompt " +
+  "wording, location, personalization, provider updates, and other factors. Results in this report represent " +
+  "a point-in-time observation and may differ when the same prompt is tested again. AI systems may also " +
+  "produce incomplete, inaccurate, or fabricated information. Findings should therefore be treated as " +
+  "directional evidence and validated against primary sources where appropriate.";
+
 function renderClosing(report: CanonicalReport): string {
   const c = report.executive_fact_counts;
   return `
     <section class="page closing">
-      <div>
-        <div class="section-eyebrow">Closing</div>
-        <h2 class="section-heading">Where ${escapeHtml(report.audit_info.company_name)} goes from here</h2>
-        <p class="wrap closing-body">
-          This audit reviewed brand recognition across ${c.brand_recognition.total_providers} AI systems, prompt visibility,
-          presence across ${c.social_profiles.total_platforms} social platforms and ${c.directories.total_directories} third-party
-          directories, and accessibility for ${c.technical_accessibility.total_crawlers} AI crawlers.
-          ${c.confirmed_gaps_count} confirmed finding${c.confirmed_gaps_count === 1 ? "" : "s"} ${c.confirmed_gaps_count === 1 ? "is" : "are"} detailed above.
-        </p>
+      <div class="section-eyebrow">Closing</div>
+      <h2 class="section-heading">Where ${escapeHtml(report.audit_info.company_name)} goes from here</h2>
+      <p class="wrap closing-body">
+        This audit reviewed brand recognition across ${c.brand_recognition.total_providers} AI systems, prompt visibility,
+        presence across ${c.social_profiles.total_platforms} social platforms and ${c.directories.total_directories} third-party
+        directories, and accessibility for ${c.technical_accessibility.total_crawlers} AI crawlers.
+        ${c.confirmed_gaps_count} confirmed finding${c.confirmed_gaps_count === 1 ? "" : "s"} ${c.confirmed_gaps_count === 1 ? "is" : "are"} detailed above.
+      </p>
+
+      <div class="closing-cta-block">
+        <div class="closing-cta-headline">Want to improve how your brand appears across AI systems?</div>
+        <a class="cta-button" href="https://smartclick.agency/contact-us/">Book a Call</a>
       </div>
-      <div class="closing-footer">
-        <div class="cta">${escapeHtml(report.closing.cta_text)}</div>
-        <div class="closing-brand-row">
-          <div class="closing-brand">AI-Clinic</div>
-          <div class="closing-secondary">
-            <img class="closing-smartclick-logo" src="${SMARTCLICK_LOGO_DATA_URI}" alt="SmartClick" />
-            Developed by smartclick.agency
-          </div>
+
+      <div class="disclosure-block">
+        <h3 class="disclosure-heading">AI Results &amp; Limitations</h3>
+        <p class="wrap disclosure-body">${escapeHtml(AI_DISCLOSURE_COPY)}</p>
+      </div>
+
+      <div class="closing-brand-row">
+        <div class="closing-brand">AI-Clinic</div>
+        <div class="closing-secondary">
+          <img class="closing-smartclick-logo" src="${SMARTCLICK_LOGO_DATA_URI}" alt="SmartClick" />
+          Developed by smartclick.agency
         </div>
       </div>
     </section>`;
@@ -655,11 +700,28 @@ const STYLES = `
     line-height: 1.5;
   }
   .page {
-    padding: 40px 44px;
+    padding: 40px 44px 54px;
     page-break-after: always;
     break-after: page;
+    position: relative;
   }
   .page:last-child { page-break-after: auto; }
+
+  /* PDF-BRAND-008: absolutely positioned so it never participates in
+     content flow -- cannot push or shift report content on any page,
+     however dense. */
+  .content-footer {
+    position: absolute;
+    left: 44px;
+    right: 44px;
+    bottom: 18px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 9px;
+    color: ${LABEL_GRAY};
+  }
+  .content-footer-logo { height: 11px; width: auto; object-fit: contain; flex: none; opacity: 0.55; }
 
   .section-eyebrow {
     font-size: 10px;
@@ -710,10 +772,11 @@ const STYLES = `
   }
   .cover-brand { font-size: 18px; font-weight: 700; letter-spacing: 0.3px; color: #FFFFFF; }
   .cover-secondary { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: rgba(255,255,255,0.75); margin-top: 3px; }
-  /* PDF-BRAND-006: official SmartClick SVG rendered white via filter (its
-     source fills are dark, for light backgrounds) -- secondary branding only,
-     never larger/bolder than the AI-Clinic wordmark above it. */
-  .cover-smartclick-logo { height: 15px; width: auto; object-fit: contain; flex: none; filter: brightness(0) invert(1); opacity: 0.8; }
+  /* PDF-BRAND-006/008: official SmartClick SVG rendered white via filter
+     (its source fills are dark, for light backgrounds) -- secondary
+     branding only, never larger/bolder than the AI-Clinic wordmark above
+     it. */
+  .cover-smartclick-logo { height: 28px; width: auto; object-fit: contain; flex: none; filter: brightness(0) invert(1); opacity: 0.85; }
   .cover-body {
     position: relative;
     z-index: 2;
@@ -819,6 +882,7 @@ const STYLES = `
   .pv-header { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
   .pv-pct { font-size: 12px; color: ${MUTED_TEXT}; }
   .pv-pct-value { font-weight: 700; color: ${GOOD}; font-size: 13px; }
+  .pv-timing-note { font-size: 10px; color: ${LABEL_GRAY}; margin: -10px 0 18px; }
   .pv-list { display: flex; flex-direction: column; gap: 14px; }
   .pv-card { background: #FFFFFF; border: 1px solid ${NEUTRAL_BORDER}; border-radius: 14px; padding: 16px 18px; break-inside: avoid; }
   .pv-prompt { font-size: 13px; font-weight: 600; color: ${DARK_NAVY}; }
@@ -929,17 +993,40 @@ const STYLES = `
     font-size: 13px;
   }
 
-  /* -- Closing -- */
-  .closing { display: flex; flex-direction: column; justify-content: space-between; height: 100vh; }
-  .closing-body { color: ${MUTED_TEXT}; font-size: 12.5px; line-height: 1.7; max-width: 460px; }
-  .closing-footer { display: flex; flex-direction: column; gap: 20px; }
-  .cta { font-size: 16px; font-weight: 600; color: ${DARK_NAVY}; }
-  .closing-brand-row { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid ${NEUTRAL_BORDER_SUBTLE}; padding-top: 18px; }
+  /* -- Closing (PDF-BRAND-008: natural document flow, not a rigid
+     height:100vh space-between split -- there is real content height here
+     now: CTA block + disclosure block, in addition to the original summary
+     and brand row) -- */
+  .closing { min-height: 100vh; padding-bottom: 30px; }
+  .closing-body { color: ${MUTED_TEXT}; font-size: 12.5px; line-height: 1.7; max-width: 460px; margin-top: 14px; }
+
+  .closing-cta-block { margin-top: 36px; padding: 26px 30px; background: ${NEUTRAL_BG}; border-radius: 16px; }
+  .closing-cta-headline { font-size: 16px; font-weight: 600; color: ${DARK_NAVY}; margin-bottom: 16px; max-width: 420px; line-height: 1.4; }
+  /* Real <a href> so Chromium's print-to-PDF engine emits a genuine
+     clickable link annotation -- not a styled div. */
+  .cta-button {
+    display: inline-block;
+    background: ${SMARTCLICK_BLUE};
+    color: #FFFFFF;
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+    padding: 12px 28px;
+    border-radius: 999px;
+    letter-spacing: 0.2px;
+  }
+
+  .disclosure-block { margin-top: 34px; }
+  .disclosure-heading { font-size: 11.5px; font-weight: 600; color: ${DARK_NAVY}; margin: 0 0 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .disclosure-body { color: ${LABEL_GRAY}; font-size: 9.5px; line-height: 1.6; max-width: 520px; }
+
+  .closing-brand-row { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid ${NEUTRAL_BORDER_SUBTLE}; padding-top: 18px; margin-top: 40px; }
   .closing-brand { font-size: 14px; font-weight: 700; color: ${DARK_NAVY}; }
-  .closing-secondary { display: flex; align-items: center; gap: 5px; font-size: 10.5px; color: ${MUTED_TEXT}; }
-  /* PDF-BRAND-006: native SVG colors read fine on this light page --
-     smaller than the cover treatment, single occurrence, secondary only. */
-  .closing-smartclick-logo { height: 12px; width: auto; object-fit: contain; flex: none; opacity: 0.85; }
+  .closing-secondary { display: flex; align-items: center; gap: 6px; font-size: 11px; color: ${MUTED_TEXT}; }
+  /* PDF-BRAND-006/008: native SVG colors read fine on this light page --
+     the stronger closing signature, still subordinate to the report title
+     and CTA above it. */
+  .closing-smartclick-logo { height: 30px; width: auto; object-fit: contain; flex: none; opacity: 0.9; }
 `;
 
 /**
