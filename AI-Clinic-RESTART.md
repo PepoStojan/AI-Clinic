@@ -4,15 +4,15 @@
 
 AI-Clinic MVP is live and production-functional.
 
-- Current HEAD: `c40edd1`
-- Stable rollback tag: `ai-clinic-stable-2026-09-26` (points to `3415b81`)
-- Trigger.dev production worker: `20260930.1`
-- Latest verified PDF regeneration run: `run_06gf4h5fbl0id3ge46aj9039e1`
+- Current HEAD: `6f0a83b` (`feat: add safe audit soft delete`)
+- Stable rollback tags:
+  - `ai-clinic-stable-2026-09-26` (points to `3415b81`) — older checkpoint, untouched
+  - `ai-clinic-stable-2026-09-30` (points to this checkpoint's docs commit) — current checkpoint
+- Trigger.dev production worker: `20260930.4` (deployed for the AUDIT-DELETE-001 rollout; shared repository/status-write logic changed, so a worker redeploy was required even though no `src/trigger/*` file itself was edited)
 - Production URL: https://ai-clinic-sage.vercel.app
 
 **Current test baseline:**
-- 443 passed
-- 25 skipped
+- 495 passed
 - 0 failures
 - lint PASS
 - typecheck PASS
@@ -21,7 +21,7 @@ AI-Clinic MVP is live and production-functional.
 Core capabilities remain:
 - shared-password login
 - new audit
-- audits list
+- audits list (excludes soft-deleted audits)
 - audit detail/progress
 - 5 audit components
 - deterministic gap detection/grouping
@@ -30,10 +30,35 @@ Core capabilities remain:
 - PDF generation
 - private Supabase storage
 - signed download
+- audit soft delete (terminal statuses only)
 - Vercel production
 - Trigger.dev production
 
-## 2. PROMPT-COMPETITORS-002 — PRODUCTION PASS
+## 2. SOCIAL CONNECTION — RESOLVED / PRODUCTION PASS
+
+Relevant commits:
+- `b426b7c19d20d312a2b8516f94265a6b35b0a08e` — feat: match legacy YouTube custom URLs with handles (SOCIAL-CONNECTION-010)
+- `5ff86d9d48a2444dba10fc469f142fddab4a7fee` — feat: use first-party schema as direct social source (SOCIAL-CONNECTION-013)
+
+Final behavior (supersedes all earlier SOCIAL-CONNECTION-00X notes below):
+- validated first-party HTML/schema can establish social connection (SOCIAL-CONNECTION-005, unchanged)
+- an Unverified external candidate can be corroborated by an exact-matching validated first-party schema `sameAs` URL (SOCIAL-CONNECTION-007)
+- YouTube `/c/<slug>` and `/@<same-slug>` are treated as the same identity (case-insensitive, exact slug only) when comparing a candidate against schema — `/channel/<id>` remains strict and is never force-matched to either form, and no other fuzzy/substring matching was introduced (SOCIAL-CONNECTION-010)
+- validated first-party schema `sameAs` can directly establish a profile even when Apify/DataForSEO return **zero** candidates at all (not just an Unverified one) — `profileStatus = Found`, `connected = Yes`, `connectionSource = schema`, `source = schema` (SOCIAL-CONNECTION-013)
+- schema-only promotion requires **exactly one** trusted schema URL for that platform; two or more conflicting `sameAs` URLs for the same platform do NOT auto-promote — existing Not Found/Unverified behavior is preserved
+- malformed/untrusted schema (wrong `@type`, not domain-tied) never promotes — enforced entirely by the pre-existing `extractSchemaSocialLinks` safeguards (SOCIAL-CONNECTION-005), reused unchanged
+- unverified candidate URLs remain hidden from the client (`profileUrl` stays `null`; `candidateProfileUrl` is internal/debug-only, never rendered)
+- `identity-validation.ts` / `validateProfileIdentity()` were never touched by any of this work
+
+**Production Ocuco verification (`AIC-2026-000015`, run `run_06gf5koilu8e23isro7vn1ua01`, worker `20260930.3`):**
+- YouTube = **Present**
+- Connected to website
+- URL visible: `https://www.youtube.com/@OcucoSoftwarewithVision`
+- (Note: `AIC-2026-000015` was later soft-deleted by the user during AUDIT-DELETE-001 production testing — the underlying verification result above is historical/confirmed, not a currently-browsable audit.)
+
+**The old YouTube issue (formerly sections 5/6 below, SOCIAL-CONNECTION-007/009) is RESOLVED.** Do not reopen without a new, real production regression.
+
+## 3. PROMPT-COMPETITORS-002 — PRODUCTION PASS
 
 Commit: `af319f789597fc0683da72b1886684fa7bd3cfe5`
 
@@ -57,7 +82,7 @@ VAL-003C remains untouched.
 
 Production PDF verification confirmed this feature renders correctly on Ocuco audits.
 
-## 3. SOCIAL-LOGIC-002 / 003 — PASS (production verified)
+## 4. SOCIAL-LOGIC-002 / 003 — PASS (production verified)
 
 Client-facing social rules:
 
@@ -73,90 +98,10 @@ Executive Summary:
 
 **Important:** Apify/DataForSEO raw candidate URLs/evidence remain stored internally. Nothing is deleted or rewritten in canonical data — this is a presentation-only rule in the PDF renderer. Random/unconnected Apify/DataForSEO URLs are NOT exposed in the client-facing PDF.
 
-## 4. SOCIAL-CONNECTION-005 — IMPLEMENTED (production deployed)
-
-Commit: `842d4f556654204b4350f5d40f0fb213e106eaf5`
-
-Added first-party JSON-LD connection detection. A social profile may count as connected when confirmed by:
-- an HTML anchor, OR
-- validated first-party JSON-LD `sameAs`
-
-Schema safeguards:
-- accepted `@type`: Organization, Corporation, LocalBusiness
-- entity must tie back to the audited domain via `url` or `@id`
-- supports `@graph`
-- supports `sameAs` as string or array
-- malformed JSON-LD skipped safely, never fails the component
-- unsupported platforms ignored
-
-URL normalization supports: www/non-www, http/https, trailing slash, `x.com ↔ twitter.com`, `fb.com ↔ facebook.com`, `threads.com ↔ threads.net`. No unsafe YouTube handle/channel equivalence.
-
-`connectionSource` persisted internally: `html` | `schema` | `html+schema` | `null`. No DB migration.
-
-## 5. SOCIAL-CONNECTION-007 — IMPLEMENTED, PRODUCTION NOT YET PASS
-
-Commit: `1358d47abdd6b2e83a67273bc4294f21a195cc3d`
-
-Purpose: allow validated first-party schema `sameAs` to corroborate an otherwise Unverified external candidate.
-
-Locked rule:
-- If candidate verdict = Unverified AND validated first-party schema `sameAs` contains the exact safely-normalized same profile URL
-- Then `profileStatus = Found`, `connected = Yes`, `connectionSource = schema`, `profileUrl` preserved
-- Otherwise: existing Unverified behavior unchanged, `profileUrl` stays hidden, `candidateProfileUrl` may be retained internally for debugging
-
-Important:
-- `validateProfileIdentity()` untouched
-- `identity-validation.ts` untouched
-- no broad substring/camelCase weakening
-- HTML-only corroboration intentionally NOT included in this pass
-
-Test baseline after this feature: 437 passed / 25 skipped, lint/typecheck/build PASS.
-
-Trigger worker deployed afterward: `20260926.6`.
-
-**However:** a brand-new Ocuco production audit still showed YouTube = Missing / Not connected to website.
-
-**Therefore SOCIAL-CONNECTION-007 must NOT be marked production PASS yet.**
-
-## 6. CURRENT OPEN YOUTUBE ISSUE
-
-Known first-party Ocuco structured data contains `https://www.youtube.com/@OcucoSoftwarewithVision` inside Organization/Corporation `sameAs`.
-
-Yet the latest new Ocuco production PDF still showed YouTube = Missing / Not connected to website.
-
-Current hypothesis — the remaining issue may be one of:
-- external candidate URL differs from the schema URL
-- `candidateProfileUrl` not retained/passed correctly
-- JSON-LD not extracted in that production run
-- schema entity rejected by domain tie-back
-- normalization mismatch
-- corroboration branch not reached
-- some other orchestration issue
-
-**Do not guess or change code before inspecting the exact new audit data path.**
-
-**Next fresh-session task: SOCIAL-CONNECTION-009 — Final YouTube Production Debug.**
-
-Need to inspect the newest audit's exact stored YouTube values:
-- profileStatus
-- connected
-- connectionSource
-- profileUrl
-- candidateProfileUrl
-- source
-- evidence
-- matchedSignals
-- Apify candidate/verdict if available
-- DataForSEO candidate/verdict if available
-- parsed schema YouTube URL
-- normalized candidate vs schema URL
-
-Do not implement a fix until root cause is proven.
-
-## 7. PDF-BRAND-008 / 009 — PRODUCTION PASS
+## 5. PDF-BRAND-008 / 009 — PRODUCTION PASS
 
 Commit: `c40edd1057fa81678f6e3757b02ca0bb070c3797`
-Trigger worker: `20260930.1`
+Trigger worker (at time of verification): `20260930.1`
 Verified production regeneration run: `run_06gf4h5fbl0id3ge46aj9039e1`
 
 Production PDF verified:
@@ -187,7 +132,47 @@ Disclosure copy:
 
 **Production verification: PASS**
 
-## 8. SECURITY STATE
+## 6. AUDIT-DELETE-001 — PRODUCTION PASS
+
+Commit: `6f0a83b8a5417fe882510d3d453e76f0da441b08`
+Migration: `supabase/migrations/20260930000001_add_audits_deleted_at.sql` (applied to production Supabase project `xpeqqatqxasfpujdwkxd`)
+Trigger worker deployed for this change: `20260930.4`
+
+Production behavior:
+- terminal audits may be soft-deleted: `COMPLETED`, `BLOCKED`, `PARTIAL`, `FAILED`
+- non-terminal audits (`CREATED`, `QUEUED`, `PROCESSING`, `VALIDATING`, `READY_FOR_PDF`, `GENERATING_PDF`) cannot be deleted — no Delete affordance renders, and the server-side guard (`softDeleteAudit`'s atomic conditional UPDATE) refuses regardless of what the UI believes
+- `audits.deleted_at` (nullable `timestamptz`) is the only new column — no hard deletion anywhere
+- deleted audit disappears from the `/audits` list
+- deleted audit's detail URL → 404 (via the existing `notFound()` pattern)
+- PDF application access is blocked (the download route now checks `getAuditById` before ever touching `reports`/storage)
+- retry and PDF-regeneration actions refuse for a deleted audit (both gained an explicit `getAuditById` check before enqueueing anything to Trigger.dev)
+- `updateAuditStatus()` itself requires `deleted_at IS NULL` in its WHERE clause — a deleted audit's status can never be mutated by any caller, including a raced retry or a manual Trigger.dev "Test" run
+- original audit status is preserved exactly as it was at the moment of deletion
+- child records preserved: `component_results`, `checklist_items`, `grouped_gaps`, `reports`
+- PDF storage object preserved (never deleted, never even referenced by any delete code path)
+- audit code is never reused — `getMaxAuditCodeSequenceForYear()` deliberately still counts deleted audits' codes; `audits_audit_code_key` is unchanged and NOT made conditional
+- list-row delete is intentionally deferred (see section 14) — only the audit detail page has a Delete affordance in this version
+- the terminal-status rule (`isTerminalAuditStatus`, `TERMINAL_AUDIT_STATUSES`) now lives in `src/lib/audit/constants.ts` (a neutral domain module), not `src/lib/ui/audit-progress.ts` — the UI module re-exports it for backward compatibility
+- the pre-existing hard-delete `deleteAudit()` in `src/lib/supabase/repositories/audits.ts` (rollback-only, used by `create-audit.ts` for a failed-creation cleanup) is completely untouched and unrelated to soft delete — do not confuse the two
+
+**Production verification audit:** `AIC-2026-000001` (Figma), id `3149c9d5-383d-4f63-acbc-3c8f1d530572`
+
+Verified:
+- `deleted_at` populated (`2026-09-30T17:02:52.826+00:00`)
+- original status remained `COMPLETED`
+- 5 `component_results` preserved
+- 38 `checklist_items` preserved
+- 6 `grouped_gaps` preserved
+- `reports` row preserved (`status: GENERATED`, `pdf_storage_path` intact)
+- `report.pdf` storage object preserved (207,766 bytes, unchanged)
+- detail URL → 404 (user-confirmed live)
+- status-mutation guard confirmed directly at the DB level (`updateAuditStatus`'s exact WHERE shape matched 0 rows against this audit)
+- no unexpected Trigger.dev run created by the delete or by the (unreachable) retry/regenerate paths
+- non-deleted audit (`AIC-2026-000014`) regression check: PASS — still queryable, PDF/report intact
+
+**Also note:** several other disposable COMPLETED audits were manually soft-deleted by the user during production testing (`AIC-2026-000002` through `000006`, plus `000015`) — all handled correctly by the same guard, not a bug.
+
+## 7. SECURITY STATE
 
 SECURITY-001 was previously marked PASS after old keys were revoked.
 
@@ -204,7 +189,7 @@ Current state:
 
 **Do NOT store any secret values in this file or in git.**
 
-## 9. UX QA STATE
+## 8. UX QA STATE
 
 Manually verified live:
 - **AUTH-UX-001** Logout — PASS
@@ -214,36 +199,20 @@ Manually verified live:
 
 **ANIMATION-UX-001** — code-complete; live verification still unconfirmed, note as open until checked.
 
-PDF cover/current report — production visually verified through the latest PDF work (section 7 above).
+**React hydration mismatch** — mentioned as an item to retain/carry forward, but no record of the specific issue exists anywhere in this file, the repo, or memory as of this checkpoint. If still genuinely open, a fresh session should ask the user for the exact symptom/page before investigating — do not assume details not documented here.
 
-## 10. Stable Backup
+PDF cover/current report — production visually verified through the PDF work (section 5 above).
 
-- Stable rollback tag: `ai-clinic-stable-2026-09-26` → points exactly to `3415b81`
-- Local backup archive: `~/Desktop/AI-Clinic-stable-2026-09-26.zip`
-  - 456 KB, 269 files, created via `git archive` at the stable tag
-  - Excludes `.git`, `node_modules`, `.next`, `.env*`, `Recources/`, `Connectors/`, `dataforseo-test/`, `Smartclick-APIs.rtf`, and all other secret/reference files
-  - `.env.example` only is included and is safe
+## 9. Stable Backup
 
-**Do NOT move/rewrite this tag.** Current code is ahead of that stable checkpoint due to later features.
+- Stable rollback tags:
+  - `ai-clinic-stable-2026-09-26` → points exactly to `3415b81` (older checkpoint — **do NOT move/rewrite this tag**)
+  - `ai-clinic-stable-2026-09-30` → points to this checkpoint's docs commit (current)
+- Local backup archives (git-archive style, tracked content only — never the raw working directory):
+  - `~/Desktop/AI-Clinic-stable-2026-09-26.zip` — 456 KB, 269 files, excludes `.git`, `node_modules`, `.next`, `.env*`, `Recources/`, `Connectors/`, `dataforseo-test/`, `Smartclick-APIs.rtf`, and all other secret/reference files; `.env.example` only is included and is safe
+  - `~/Desktop/AI-Clinic-stable-2026-09-30.zip` (or a timestamped-suffix variant if that exact name already existed — see the BACKUP-CHECKPOINT-007 Quick Report for the exact final path/size) — same exclusion rules, taken from the `ai-clinic-stable-2026-09-30` tag
 
-To roll back: `git checkout ai-clinic-stable-2026-09-26` (detached HEAD) or reset a throwaway branch to it, then redeploy Vercel (auto via GitHub integration) and separately redeploy the Trigger.dev worker for that commit's code (see section 13 below — they are independent deploy targets).
-
-## 11. Next Optional Feature After YouTube Fix
-
-**AUDIT-DELETE-001 — Soft Delete Audits**
-
-Planned direction:
-- terminal audits only initially: COMPLETED, BLOCKED, PARTIAL, FAILED
-- add `deleted_at` or reuse an existing archive/delete state if present
-- delete from frontend = soft delete in DB
-- hide from Audits list
-- deleted audit's direct URL → 404/redirect
-- preserve: component results, grouped gaps, reports, PDFs, evidence
-- no hard delete for MVP
-- confirmation modal
-- no restore UI initially
-
-**Do NOT start this until YouTube/social correctness is resolved.**
+To roll back to either checkpoint: `git checkout <tag>` (detached HEAD) or reset a throwaway branch to it, then redeploy Vercel (auto via GitHub integration) and separately redeploy the Trigger.dev worker for that commit's code (see section 12 below — they are independent deploy targets). Rolling back past `6f0a83b` also means the `audits.deleted_at` column/behavior in that older code won't exist — the DB column itself stays (migrations are never rolled back automatically), it just won't be read/written by that older code.
 
 ## Known Product Logic (locked, do not change without explicit instruction)
 
@@ -255,8 +224,9 @@ Planned direction:
 - No Result / N/A / Could Not Verify must never become a false gap, anywhere in the pipeline.
 - The PDF renderer consumes `reports.canonical_report_json` only — no direct queries to component_results/grouped_gaps/checklist_items/provider APIs.
 - The `audit-reports` Supabase Storage bucket remains private; downloads only via signed URL.
-- Social Profiles client-facing display rule (see section 3 above) — presentation-only, do not conflate with the underlying classification logic (`run-component.ts`/`checklistStatusFor()`/gap detectors).
+- Social Profiles client-facing display rule (see section 4 above) — presentation-only, do not conflate with the underlying classification logic (`run-component.ts`/`checklistStatusFor()`/gap detectors).
 - PDF regeneration (`regenerate-audit-pdf`) only re-renders the already-assembled `canonical_report_json` — it never re-runs audit components. A historical audit's underlying data (e.g. Social Profiles connection status) only reflects fixes shipped **before** that audit originally ran; regenerating its PDF does not retroactively apply newer component logic. Only a brand-new audit exercises current component code.
+- Audit soft delete (section 6) only affects terminal-status audits and is presentation/access-layer only for everything except the one new `deleted_at` column — never conflate the hard-delete rollback function (`deleteAudit()`) with soft delete (`softDeleteAudit()`); they are unrelated.
 
 ## Brand Tokens / Visual Direction
 
@@ -282,34 +252,59 @@ Planned direction:
 
 These remain local/reference-only. Never use `git add .` / `git add -A` — always stage exact files by name and review `git status`/`git diff` before committing.
 
-## 12. Vercel / Trigger.dev — Separate Deploy Targets
+## 10. Vercel / Trigger.dev — Separate Deploy Targets
 
 - Production project: `stojan-s-projects/ai-clinic`, URL: https://ai-clinic-sage.vercel.app
-- Trigger.dev project: `proj_pazyklzkrxxmecphnoco` (SmartClick org, AI-Clinic project) — current known deployed worker version: **`20260930.1`**
-- **A Vercel redeploy does NOT update the Trigger.dev worker, and vice versa.** Any change to code imported by `src/trigger/*` (including `src/lib/pdf/html-template.ts`, `logo-assets.ts`, anything the PDF renderer or audit pipeline touches, or any `src/lib/social-profiles/*`/`src/lib/prompt-visibility/*` component logic) requires a separate `npx trigger.dev@latest deploy` (use `--native-build --detach`; confirm liveness via `npx trigger.dev@latest projects list`, or poll `npx trigger.dev@latest runs get <run-id>` after a run to confirm the `Version` field matches the new deploy — the CLI's `--detach` returns before the new version is fully live, so an immediate run can land on the *previous* version; wait ~30-60s and check again if so).
-- The Vercel CLI (`npx vercel`) works and is authenticated in this environment; project is already linked (`.vercel/project.json`). Listing env vars (`vercel env ls production`) shows names/metadata only, never values. `npx vercel logs --environment production --query "<term>"` is a reliable way to pull real production error logs (used successfully to diagnose the Trigger.dev key issue in section 8).
+- Trigger.dev project: `proj_pazyklzkrxxmecphnoco` (SmartClick org, AI-Clinic project) — current known deployed worker version: **`20260930.4`**
+- **A Vercel redeploy does NOT update the Trigger.dev worker, and vice versa.** Any change to code imported by `src/trigger/*` (including `src/lib/pdf/html-template.ts`, `logo-assets.ts`, anything the PDF renderer or audit pipeline touches, any `src/lib/social-profiles/*`/`src/lib/prompt-visibility/*` component logic, or shared repository/status-write logic like `src/lib/supabase/repositories/audits.ts`) requires a separate `npx trigger.dev@latest deploy` (use `--native-build --detach`; confirm liveness via `npx trigger.dev@latest projects list`, or poll `npx trigger.dev@latest runs get <run-id>` after a run to confirm the `Version` field matches the new deploy — the CLI's `--detach` returns before the new version is fully live, so an immediate run can land on the *previous* version; wait ~30-60s and check again if so). Note: if no real audit/PDF run happens after a Trigger.dev deploy, the new version's liveness can only be confirmed by the deploy command's own success report, not by an actual run's `Version` field — don't manufacture a paid run just to prove this.
+- The Vercel CLI (`npx vercel`) works and is authenticated in this environment; project is already linked (`.vercel/project.json`). Listing env vars (`vercel env ls production`) shows names/metadata only, never values. `npx vercel logs --environment production --query "<term>"` is a reliable way to pull real production error logs. `npx vercel --prod --yes` (direct CLI deploy) has returned `"Not authorized"` in this environment even though `vercel whoami`/project linkage both check out — the GitHub integration's auto-deploy-on-push-to-main is the reliable path instead (confirm via `npx vercel ls --prod`, matching the newest deployment's age/timestamp against the push time, and its alias list including the production URL).
 - Pulling real production secret values locally (`vercel env pull`) is blocked by the Claude Code auto-mode permission classifier ("Credential Materialization") — do not attempt to route around this; use indirect evidence (existing run history, `vercel env ls` metadata, `vercel logs`) instead when verifying credentials.
-- The app's `AI_CLINIC_SHARED_PASSWORD` (production login) and the production `TRIGGER_SECRET_KEY` are not available locally (`.env.local` only has dev-scoped placeholders/keys, e.g. `tr_dev_...`). A fresh session cannot log into production or directly `tasks.trigger()` against it. To run/regenerate an audit in production: either ask the user to do it via the live app UI, or — for tasks with no UI entry point (e.g. regenerating a COMPLETED audit's PDF, which has no button in the current UI) — ask the user to use the Trigger.dev dashboard's "Test" feature on the relevant task with the right payload (e.g. `{"auditId": "<uuid>"}`), which only needs their Trigger.dev login, not the app's.
-- Direct read-only production Supabase queries (via `SUPABASE_SECRET_KEY`/`NEXT_PUBLIC_SUPABASE_URL` from `.env.local`, the same single Supabase project used in production) are a reliable way to inspect exact stored audit/component/report data — used successfully throughout SOCIAL-CONNECTION debugging. Never write to production data this way.
+- The app's `AI_CLINIC_SHARED_PASSWORD` (production login) and the production `TRIGGER_SECRET_KEY` are not available locally (`.env.local` only has dev-scoped placeholders/keys, e.g. `tr_dev_...`). A fresh session cannot log into production or directly `tasks.trigger()` against it. To run/regenerate an audit in production, or to click through any UI flow (including the audit-delete confirmation): either ask the user to do it via the live app UI, or — for tasks with no UI entry point (e.g. regenerating a COMPLETED audit's PDF, which has no button in the current UI) — ask the user to use the Trigger.dev dashboard's "Test" feature on the relevant task with the right payload (e.g. `{"auditId": "<uuid>"}`), which only needs their Trigger.dev login, not the app's. The shared-password auth middleware also means a plain unauthenticated `curl` against any app route (including API routes) just gets redirected to `/login` — it cannot be used to directly observe a 404/error response; use direct Supabase queries (below) to prove the underlying data/logic instead, and ask the user to confirm the literal HTTP-level behavior when that matters.
+- Direct read-only production Supabase queries (via `SUPABASE_SECRET_KEY`/`NEXT_PUBLIC_SUPABASE_URL` from `.env.local`, the same single Supabase project used in production) are a reliable way to inspect exact stored audit/component/report data, and to prove a repository function's exact query behavior by replicating its filter chain directly (e.g. confirming `getAuditById`'s `deleted_at IS NULL` filter really excludes a given row). Never write to production data this way except for an explicitly-approved, narrowly-scoped migration via `npx supabase db push --linked` (project ref `xpeqqatqxasfpujdwkxd`) — never a raw data write.
+- `npx supabase inspect db index-stats --linked` and `npx supabase migration list --linked` both connect directly to the remote Postgres (no Docker needed) and are reliable ways to confirm an index/migration actually applied; `npx supabase db dump`/`db diff` require Docker, which is not installed in this environment.
 
-## 13. Fresh Session Rules
+## 11. Fresh Session Rules
 
 A fresh Claude Code session must:
 
 1. Read `AI-Clinic-RESTART.md` completely first.
 2. Run `git status --short`.
-3. Check current `HEAD`.
-4. Preserve the stable tag `ai-clinic-stable-2026-09-26` — never move or recreate it.
+3. Check current `HEAD` against `origin/main` — don't assume the two match without checking.
+4. Preserve both stable tags `ai-clinic-stable-2026-09-26` and `ai-clinic-stable-2026-09-30` — never move or recreate either.
 5. Never read/modify `dataforseo-test/` unless explicitly requested.
 6. Never stage `Recources/`, `Connectors/`, or other secret/reference files — never `git add .`/`git add -A`.
 7. Keep tasks small and isolated (Task-ID-scoped).
 8. Preserve VAL-003C.
 9. Do not run a full paid audit unless explicitly required.
-10. Remember Vercel and Trigger.dev are separate deployment targets (see section 12).
+10. Remember Vercel and Trigger.dev are separate deployment targets (see section 10).
 11. Stop after each task with a Quick Report.
 12. Do not mark a task "verified live" unless it was actually checked live — code-complete/pushed and manually-verified are different states; keep them distinct in reporting.
-13. **Do not mark SOCIAL-CONNECTION-007 production PASS until the YouTube issue (section 6) is actually resolved.**
+13. Never confuse the hard-delete `deleteAudit()` (create-audit rollback) with soft-delete `softDeleteAudit()` (AUDIT-DELETE-001) — see section 6.
+14. Do not begin PERFORMANCE-001 optimization work without first completing measurement/analysis — see section 12.
 
-## 14. Next Task
+## 12. Next Task
 
-**SOCIAL-CONNECTION-009 — Final YouTube Production Debug** (see section 6 for exact scope). Do not implement a fix until root cause is proven from real stored audit data.
+**NEXT MAJOR TASK: PERFORMANCE-001 — Application Latency Investigation**
+
+Goal: determine why normal clicks/navigation/actions feel slower than expected, **before** changing any architecture.
+
+Potential areas to inspect (measurement/analysis only — no optimization until bottlenecks are proven):
+- auth middleware
+- Vercel server execution / cold starts
+- server actions
+- Supabase query latency
+- serial vs parallel DB calls
+- duplicate data fetching
+- dynamic route rendering
+- client navigation
+- `router.refresh` / revalidation
+- signed URL generation
+- polling (`POLL_INTERVAL_MS` in `audit-detail-client.tsx`)
+- Trigger.dev calls where applicable
+- network waterfall
+
+**PERFORMANCE-001 must begin as measurement/analysis only. No optimization should be implemented until bottlenecks are proven.**
+
+Also retained as open/deferred:
+- list-row audit delete = optional future enhancement (detail-page delete is the only entry point today; see section 6)
+- React hydration mismatch issue, if still unresolved — no specifics documented anywhere in this repo as of this checkpoint; ask the user for the exact symptom before investigating (see section 8)
