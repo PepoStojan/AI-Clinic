@@ -47,6 +47,37 @@ export function normalizeUrlForComparison(url: string): string {
   }
 }
 
+// SOCIAL-CONNECTION-010: YouTube exposes the same channel identity through
+// two different slug-based URL forms -- the legacy custom URL (/c/<slug>)
+// and the modern handle (/@<slug>). Both are owner-chosen, human-readable
+// identifiers (unlike /channel/<opaque-id>, which is never treated as
+// equivalent to either). Deliberately narrow: only these two path shapes
+// participate, and only an exact case-insensitive slug match counts -- no
+// fuzzy/substring/token matching, no redirect resolution.
+const YOUTUBE_SLUG_PATH_RE = /^\/(?:c\/|@)([^/]+)/i;
+
+/** Extracts the slug from a YouTube /c/<slug> or /@<slug> URL, or null if
+ * the URL isn't one of those two slug-based forms (e.g. /channel/<id>). */
+export function youtubeSlugIdentity(url: string): string | null {
+  try {
+    const path = new URL(url.trim()).pathname;
+    const match = YOUTUBE_SLUG_PATH_RE.exec(path);
+    if (!match) return null;
+    return match[1].toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+/** True when two YouTube URLs are the same slug-based identity (/c/<slug>
+ * vs /@<slug>, case-insensitive) -- never true for /channel/<id> on either
+ * side. */
+export function youtubeUrlsShareSlugIdentity(urlA: string, urlB: string): boolean {
+  const slugA = youtubeSlugIdentity(urlA);
+  const slugB = youtubeSlugIdentity(urlB);
+  return slugA !== null && slugB !== null && slugA === slugB;
+}
+
 function hostOf(url: string): string {
   try {
     const host = new URL(url.trim()).hostname.toLowerCase();

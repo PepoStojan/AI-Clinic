@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { extractSchemaSocialLinks, extractSocialHrefs, resolveConnectionSource } from "../website-links";
-import { normalizeUrlForComparison } from "../platforms";
+import { normalizeUrlForComparison, youtubeUrlsShareSlugIdentity } from "../platforms";
 
 function ldJsonHtml(json: unknown): string {
   return `<html><head><script type="application/ld+json">${JSON.stringify(json)}</script></head><body></body></html>`;
@@ -183,6 +183,86 @@ describe("resolveConnectionSource", () => {
   it("YouTube /channel/... and /@handle are NOT force-matched to each other", () => {
     const r = result({ youtube: [] }, { youtube: ["https://www.youtube.com/channel/UCabcdefg12345"] });
     expect(resolveConnectionSource(r, "youtube", "https://www.youtube.com/@OcucoSoftwarewithVision")).toBe(null);
+  });
+
+  // SOCIAL-CONNECTION-010: /c/<slug> vs /@<slug> is the actual Ocuco
+  // regression from SOCIAL-CONNECTION-009 -- Apify discovered the legacy
+  // custom URL, the site's own schema declares the modern handle, same slug.
+  it("YouTube /c/<slug> candidate matches /@<same slug> schema sameAs -> 'schema' (real Ocuco regression)", () => {
+    const r = result({ youtube: [] }, { youtube: ["https://www.youtube.com/@OcucoSoftwarewithVision"] });
+    expect(resolveConnectionSource(r, "youtube", "https://www.youtube.com/c/OcucoSoftwarewithVision")).toBe("schema");
+  });
+
+  it("YouTube /@<slug> candidate matches /c/<same slug> HTML anchor -> 'html'", () => {
+    const r = result({ youtube: ["https://www.youtube.com/c/OcucoSoftwarewithVision"] }, { youtube: [] });
+    expect(resolveConnectionSource(r, "youtube", "https://www.youtube.com/@OcucoSoftwarewithVision")).toBe("html");
+  });
+
+  it("YouTube slug match is case-insensitive", () => {
+    const r = result({ youtube: [] }, { youtube: ["https://www.youtube.com/@OcucoSoftwarewithVision"] });
+    expect(resolveConnectionSource(r, "youtube", "https://www.youtube.com/c/ocucosoftwarewithvision")).toBe("schema");
+  });
+
+  it("YouTube /c/<slug> does NOT match /@<different slug>", () => {
+    const r = result({ youtube: [] }, { youtube: ["https://www.youtube.com/@SomeOtherBrand"] });
+    expect(resolveConnectionSource(r, "youtube", "https://www.youtube.com/c/OcucoSoftwarewithVision")).toBe(null);
+  });
+
+  it("YouTube /channel/<id> still does NOT match /c/<slug>, even with slug-equivalence enabled", () => {
+    const r = result({ youtube: [] }, { youtube: ["https://www.youtube.com/channel/UCabcdefg12345"] });
+    expect(resolveConnectionSource(r, "youtube", "https://www.youtube.com/c/OcucoSoftwarewithVision")).toBe(null);
+  });
+
+  it("slug-equivalence is youtube-only -- linkedin /c/-shaped paths do not get special treatment", () => {
+    const r = result({ linkedin: [] }, { linkedin: ["https://www.linkedin.com/company/ocuco-other"] });
+    expect(resolveConnectionSource(r, "linkedin", "https://www.linkedin.com/c/ocuco-other")).toBe(null);
+  });
+});
+
+describe("youtubeUrlsShareSlugIdentity", () => {
+  it("matches /c/<slug> against /@<same slug>", () => {
+    expect(
+      youtubeUrlsShareSlugIdentity(
+        "https://www.youtube.com/c/OcucoSoftwarewithVision",
+        "https://www.youtube.com/@OcucoSoftwarewithVision"
+      )
+    ).toBe(true);
+  });
+
+  it("matches case-insensitively", () => {
+    expect(
+      youtubeUrlsShareSlugIdentity("https://www.youtube.com/@OcucoSoftwarewithVision", "https://www.youtube.com/@ocucosoftwarewithvision")
+    ).toBe(true);
+  });
+
+  it("does not match different slugs in /c/ form", () => {
+    expect(youtubeUrlsShareSlugIdentity("https://www.youtube.com/c/OcucoSoftwarewithVision", "https://www.youtube.com/c/OtherBrand")).toBe(
+      false
+    );
+  });
+
+  it("does not match different slugs in /@ form", () => {
+    expect(
+      youtubeUrlsShareSlugIdentity("https://www.youtube.com/@OcucoSoftwarewithVision", "https://www.youtube.com/@OtherBrand")
+    ).toBe(false);
+  });
+
+  it("never matches /channel/<id> against /@<slug>", () => {
+    expect(
+      youtubeUrlsShareSlugIdentity("https://www.youtube.com/channel/UC123abcExample", "https://www.youtube.com/@OcucoSoftwarewithVision")
+    ).toBe(false);
+  });
+
+  it("never matches /channel/<id> against /c/<slug>", () => {
+    expect(
+      youtubeUrlsShareSlugIdentity("https://www.youtube.com/channel/UC123abcExample", "https://www.youtube.com/c/OcucoSoftwarewithVision")
+    ).toBe(false);
+  });
+
+  it("never matches /channel/<id> against /channel/<other id>", () => {
+    expect(
+      youtubeUrlsShareSlugIdentity("https://www.youtube.com/channel/UC123abcExample", "https://www.youtube.com/channel/UC999zzzOther")
+    ).toBe(false);
   });
 });
 

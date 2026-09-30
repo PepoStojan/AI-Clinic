@@ -1,7 +1,7 @@
 import "server-only";
 
 import { SOCIAL_PLATFORMS } from "../audit/checklist";
-import { classifyUrlPlatform, normalizeUrlForComparison, type SocialPlatform } from "./platforms";
+import { classifyUrlPlatform, normalizeUrlForComparison, youtubeUrlsShareSlugIdentity, type SocialPlatform } from "./platforms";
 
 // COMP-003 website -> profile connection signal. One homepage fetch, one
 // pass of minimal HTML inspection (anchor hrefs) -- deliberately not a
@@ -218,15 +218,27 @@ export async function fetchWebsiteSocialLinks(
  * YouTube /channel/... URL never force-matches a /@handle URL, and two
  * different handles on the same platform never match each other. Prefers a
  * false negative over a false positive.
+ *
+ * SOCIAL-CONNECTION-010: for youtube specifically, a candidate/href pair
+ * that isn't equal after normalizeUrlForComparison gets one more narrow
+ * check -- youtubeUrlsShareSlugIdentity -- which only matches /c/<slug>
+ * against /@<slug> (case-insensitive, exact slug). /channel/<id> URLs are
+ * excluded there too, so this never widens the /channel/ vs /@ or /c/
+ * false-positive guard above.
  */
+function urlsMatchForPlatform(platform: SocialPlatform, urlA: string, urlB: string): boolean {
+  if (normalizeUrlForComparison(urlA) === normalizeUrlForComparison(urlB)) return true;
+  if (platform === "youtube") return youtubeUrlsShareSlugIdentity(urlA, urlB);
+  return false;
+}
+
 export function resolveConnectionSource(
   result: Pick<WebsiteSocialLinksResult, "linksByPlatform" | "schemaLinksByPlatform">,
   platform: SocialPlatform,
   profileUrl: string
 ): ConnectionSource {
-  const target = normalizeUrlForComparison(profileUrl);
-  const htmlMatch = result.linksByPlatform[platform].some((href) => normalizeUrlForComparison(href) === target);
-  const schemaMatch = result.schemaLinksByPlatform[platform].some((href) => normalizeUrlForComparison(href) === target);
+  const htmlMatch = result.linksByPlatform[platform].some((href) => urlsMatchForPlatform(platform, href, profileUrl));
+  const schemaMatch = result.schemaLinksByPlatform[platform].some((href) => urlsMatchForPlatform(platform, href, profileUrl));
 
   if (htmlMatch && schemaMatch) return "html+schema";
   if (htmlMatch) return "html";
