@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { DotLottieReact } from "@lottiefiles/dotlottie-react";
 import { auditStatusColor, auditStatusLabel } from "@/lib/ui/status-colors";
 import { isTerminalAuditStatus, type ProgressStep } from "@/lib/ui/audit-progress";
-import { retryAuditAction, retryQueueAction, regeneratePdfAction } from "../actions";
+import { retryAuditAction, retryQueueAction, regeneratePdfAction, deleteAuditAction } from "../actions";
 import styles from "./audit-detail.module.css";
 
 const POLL_INTERVAL_MS = 4000;
@@ -225,7 +226,72 @@ export function AuditDetailClient({ initial }: { initial: StatusSnapshot }) {
 
       {actionError && <p className={styles.issueTitle}>{actionError}</p>}
       {isRunning && <p className={styles.meta} style={{ marginTop: 12 }}>Checking for updates...</p>}
+
+      {!isRunning && <DeleteAuditSection auditId={audit.id} />}
     </>
+  );
+}
+
+/**
+ * AUDIT-DELETE-001B: only ever rendered for a terminal-status audit (the
+ * parent gates on `!isRunning`). Two-step confirm (no naked
+ * window.confirm()) with its own local pending state, kept isolated from
+ * the parent's retry/regenerate `pending` so a delete-in-flight can't be
+ * confused with those. On success, redirects away immediately -- the
+ * audit is no longer reachable at this URL.
+ */
+function DeleteAuditSection({ auditId }: { auditId: string }) {
+  const router = useRouter();
+  const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  async function handleConfirmDelete() {
+    if (deleting) return; // prevent double submission
+    setDeleting(true);
+    setDeleteError(null);
+    const result = await deleteAuditAction(auditId);
+    if (result.success) {
+      router.push("/audits");
+      return;
+    }
+    setDeleting(false);
+    setDeleteError(result.error);
+  }
+
+  if (!confirming) {
+    return (
+      <div className={styles.dangerZone}>
+        <button className={styles.deleteButton} onClick={() => setConfirming(true)}>
+          Delete Audit
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.dangerZone}>
+      <p className={styles.deleteConfirmText}>
+        This audit will disappear from the app and no longer be reachable here. The underlying data and PDF
+        stay stored internally, but there&apos;s no way to bring it back into the app yet.
+      </p>
+      <div className={styles.actions}>
+        <button className={styles.deleteConfirmButton} onClick={handleConfirmDelete} disabled={deleting}>
+          {deleting ? "Deleting..." : "Confirm Delete"}
+        </button>
+        <button
+          className={styles.secondaryButton}
+          onClick={() => {
+            setConfirming(false);
+            setDeleteError(null);
+          }}
+          disabled={deleting}
+        >
+          Cancel
+        </button>
+      </div>
+      {deleteError && <p className={styles.issueTitle}>{deleteError}</p>}
+    </div>
   );
 }
 

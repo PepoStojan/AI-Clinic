@@ -4,6 +4,11 @@
 // testable without a database. Backend components may run in parallel;
 // this only decides what to SHOW per step, not how they actually execute.
 
+// AUDIT-DELETE-001: re-exported (not defined here) so repository/server
+// code can depend on this same terminal-status business rule without
+// importing from the UI layer -- see src/lib/audit/constants.ts.
+export { isTerminalAuditStatus } from "../audit/constants";
+
 export type StepState = "Pending" | "Running" | "Completed" | "N/A" | "Failed";
 
 export interface ProgressStep {
@@ -91,9 +96,4 @@ export function computeProgressSteps(input: ProgressInput): ProgressStep[] {
     { label: "Generating Report", state: generatingReport },
     { label: "Finalizing PDF", state: finalizingPdf },
   ];
-}
-
-/** True once the audit has reached a terminal state -- client polling stops here. */
-export function isTerminalAuditStatus(status: string): boolean {
-  return status === "COMPLETED" || status === "BLOCKED" || status === "PARTIAL" || status === "FAILED";
 }

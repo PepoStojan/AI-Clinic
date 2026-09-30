@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getAuditById } from "@/lib/supabase/repositories/audits";
 import { getLatestReport } from "@/lib/supabase/repositories/reports";
 import { getReportSignedUrl } from "@/lib/supabase/storage";
 
@@ -7,6 +8,18 @@ import { getReportSignedUrl } from "@/lib/supabase/storage";
 // route is the only thing that ever calls it, server-side.
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+
+  // AUDIT-DELETE-001B: getLatestReport() queries `reports` directly by
+  // audit_id and has no knowledge of deleted_at -- without this explicit
+  // check, a deleted audit's PDF would still be downloadable via a direct
+  // hit on this route even though it's hidden everywhere else. The
+  // underlying storage object itself is never touched -- this only blocks
+  // the app's own signed-URL hand-out.
+  const audit = await getAuditById(id);
+  if (!audit) {
+    return NextResponse.json({ error: "Audit not found." }, { status: 404 });
+  }
+
   const report = await getLatestReport(id);
 
   if (!report || report.status !== "GENERATED" || !report.pdf_storage_path) {

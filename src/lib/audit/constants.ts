@@ -42,3 +42,14 @@ export const GROUPED_GAP_VALIDATION_STATUSES = [
 ] as const;
 
 export const REPORT_STATUSES = ["DRAFT", "READY", "GENERATING", "GENERATED", "FAILED"] as const;
+
+// AUDIT-DELETE-001: the audit statuses eligible for soft delete -- moved
+// here (not src/lib/ui/audit-progress.ts) so repository/server code can
+// depend on this business rule without importing from the UI layer.
+// src/lib/ui/audit-progress.ts re-exports isTerminalAuditStatus from here
+// so existing UI call sites are unaffected.
+export const TERMINAL_AUDIT_STATUSES = ["COMPLETED", "BLOCKED", "PARTIAL", "FAILED"] as const;
+
+export function isTerminalAuditStatus(status: string): boolean {
+  return (TERMINAL_AUDIT_STATUSES as readonly string[]).includes(status);
+}
