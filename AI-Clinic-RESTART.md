@@ -4,11 +4,12 @@
 
 AI-Clinic MVP is live and production-functional.
 
-- Current HEAD: `6f0a83b` (`feat: add safe audit soft delete`)
+- Last application code commit: `6f0a83b` (`feat: add safe audit soft delete`) — no application code has changed since; subsequent commits are documentation-only checkpoints (this one included)
 - Stable rollback tags:
   - `ai-clinic-stable-2026-09-26` (points to `3415b81`) — older checkpoint, untouched
-  - `ai-clinic-stable-2026-09-30` (points to this checkpoint's docs commit) — current checkpoint
-- Trigger.dev production worker: `20260930.4` (deployed for the AUDIT-DELETE-001 rollout; shared repository/status-write logic changed, so a worker redeploy was required even though no `src/trigger/*` file itself was edited)
+  - `ai-clinic-stable-2026-09-30` (points to `09e17ed`, the prior docs checkpoint) — untouched by this update
+- Trigger.dev production worker: `20260930.4` — confirmed live by 2 real completed production audit runs after the last checkpoint (`run_06gf7lrlqljb96p0bac6a1v101`, 9/30 21:42; `run_06gfcg6ml2478lq7ialab16701`, 10/1 08:57), both COMPLETED, both on this version
+- Vercel production: confirmed current deployment (`dpl_Bn12GePyWkVi7zfPGgtpaiKUaHhZ`, aliased to the production URL) matches commit `09e17ed`, deployed via GitHub integration auto-deploy ~1 minute after that push
 - Production URL: https://ai-clinic-sage.vercel.app
 
 **Current test baseline:**
@@ -151,7 +152,7 @@ Production behavior:
 - child records preserved: `component_results`, `checklist_items`, `grouped_gaps`, `reports`
 - PDF storage object preserved (never deleted, never even referenced by any delete code path)
 - audit code is never reused — `getMaxAuditCodeSequenceForYear()` deliberately still counts deleted audits' codes; `audits_audit_code_key` is unchanged and NOT made conditional
-- list-row delete is intentionally deferred (see section 14) — only the audit detail page has a Delete affordance in this version
+- list-row delete is intentionally deferred (see section 13) — only the audit detail page has a Delete affordance in this version
 - the terminal-status rule (`isTerminalAuditStatus`, `TERMINAL_AUDIT_STATUSES`) now lives in `src/lib/audit/constants.ts` (a neutral domain module), not `src/lib/ui/audit-progress.ts` — the UI module re-exports it for backward compatibility
 - the pre-existing hard-delete `deleteAudit()` in `src/lib/supabase/repositories/audits.ts` (rollback-only, used by `create-audit.ts` for a failed-creation cleanup) is completely untouched and unrelated to soft delete — do not confuse the two
 
@@ -212,7 +213,7 @@ PDF cover/current report — production visually verified through the PDF work (
   - `~/Desktop/AI-Clinic-stable-2026-09-26.zip` — 456 KB, 269 files, excludes `.git`, `node_modules`, `.next`, `.env*`, `Recources/`, `Connectors/`, `dataforseo-test/`, `Smartclick-APIs.rtf`, and all other secret/reference files; `.env.example` only is included and is safe
   - `~/Desktop/AI-Clinic-stable-2026-09-30.zip` (or a timestamped-suffix variant if that exact name already existed — see the BACKUP-CHECKPOINT-007 Quick Report for the exact final path/size) — same exclusion rules, taken from the `ai-clinic-stable-2026-09-30` tag
 
-To roll back to either checkpoint: `git checkout <tag>` (detached HEAD) or reset a throwaway branch to it, then redeploy Vercel (auto via GitHub integration) and separately redeploy the Trigger.dev worker for that commit's code (see section 12 below — they are independent deploy targets). Rolling back past `6f0a83b` also means the `audits.deleted_at` column/behavior in that older code won't exist — the DB column itself stays (migrations are never rolled back automatically), it just won't be read/written by that older code.
+To roll back to either checkpoint: `git checkout <tag>` (detached HEAD) or reset a throwaway branch to it, then redeploy Vercel (auto via GitHub integration) and separately redeploy the Trigger.dev worker for that commit's code (see section 10 below — they are independent deploy targets). Rolling back past `6f0a83b` also means the `audits.deleted_at` column/behavior in that older code won't exist — the DB column itself stays (migrations are never rolled back automatically), it just won't be read/written by that older code.
 
 ## Known Product Logic (locked, do not change without explicit instruction)
 
@@ -280,31 +281,53 @@ A fresh Claude Code session must:
 11. Stop after each task with a Quick Report.
 12. Do not mark a task "verified live" unless it was actually checked live — code-complete/pushed and manually-verified are different states; keep them distinct in reporting.
 13. Never confuse the hard-delete `deleteAudit()` (create-audit rollback) with soft-delete `softDeleteAudit()` (AUDIT-DELETE-001) — see section 6.
-14. Do not begin PERFORMANCE-001 optimization work without first completing measurement/analysis — see section 12.
+14. PERFORMANCE-001 analysis is complete and optimization is intentionally deferred (see section 12) — do not treat it as a pending/mandatory task; next task is TBD, product-priority driven (see section 13).
 
-## 12. Next Task
+## 12. PERFORMANCE-001 — ANALYSIS COMPLETE / DEFERRED
 
-**NEXT MAJOR TASK: PERFORMANCE-001 — Application Latency Investigation**
+Measurement-only investigation completed (PERFORMANCE-001A). No code was changed.
 
-Goal: determine why normal clicks/navigation/actions feel slower than expected, **before** changing any architecture.
+Findings:
+- **no critical performance blocker identified**
+- auth middleware (`src/proxy.ts`) is local HMAC-SHA256 verification only — zero network/DB I/O, negligible cost
+- normal page navigation never invokes DataForSEO, Apify, any AI provider, or Playwright — confirmed by direct import-graph inspection; those only run inside Trigger.dev task execution, never on a Vercel UI request path
+- biggest performance *opportunities* (not problems — current MVP speed is acceptable):
+  - no `loading.tsx`/`<Suspense>` anywhere, so `force-dynamic` navigation (`/audits`, `/audits/[id]`) shows nothing until the full server render completes — the strongest, most universal finding (perceived latency, not backend slowness)
+  - `getLatestReport()` over-fetches the full `canonical_report_json`/`pre_pdf_checklist_json` on every call, even though callers only read a handful of scalar fields
+  - `listComponentResultsByAuditId()` similarly over-fetches `raw_result_json`/`normalized_result_json` when only `status` is used
+  - `/audits` issues 1 + N `getLatestReport` calls (N = active audit count) just to compute a boolean per row — will scale linearly with audit count, no pagination exists
+  - some independent reads (`getAuditById` alongside its sibling queries in the detail page, status route, and PDF route) are written sequentially though not actually dependent on each other
+  - active-audit status polling (every 4s) repeats the same over-fetching reads for as long as an audit is running
 
-Potential areas to inspect (measurement/analysis only — no optimization until bottlenecks are proven):
-- auth middleware
-- Vercel server execution / cold starts
-- server actions
-- Supabase query latency
-- serial vs parallel DB calls
-- duplicate data fetching
-- dynamic route rendering
-- client navigation
-- `router.refresh` / revalidation
-- signed URL generation
-- polling (`POLL_INTERVAL_MS` in `audit-detail-client.tsx`)
-- Trigger.dev calls where applicable
-- network waterfall
+Risk assessment (for any future implementation):
+- loading states = VERY LOW RISK
+- narrower `SELECT` column lists = VERY LOW RISK
+- parallelizing already-independent reads = VERY LOW RISK
+- caching changes, auth/middleware changes = defer, higher risk given the shared-password access model and live-status correctness requirements
 
-**PERFORMANCE-001 must begin as measurement/analysis only. No optimization should be implemented until bottlenecks are proven.**
+**Decision: performance optimization is intentionally deferred.** Current MVP speed is acceptable as-is. Revisit only if:
+- UX becomes materially problematic
+- audit/user volume increases meaningfully
+- production metrics show an actual regression
 
-Also retained as open/deferred:
-- list-row audit delete = optional future enhancement (detail-page delete is the only entry point today; see section 6)
-- React hydration mismatch issue, if still unresolved — no specifics documented anywhere in this repo as of this checkpoint; ask the user for the exact symptom before investigating (see section 8)
+PERFORMANCE-002 (or any optimization work) is **not** a mandatory next task.
+
+## 13. Known Deferred / Optional Items
+
+Kept as optional only, not scheduled:
+- list-row audit delete (detail-page delete is the only entry point today; see section 6)
+- performance optimizations (see section 12 — analysis complete, deferred)
+- React hydration mismatch (#418), if still unresolved — no specifics documented anywhere in this repo as of this checkpoint; ask the user for the exact symptom/page before investigating
+- DB capacity analysis
+- regenerate-PDF button for COMPLETED audits (currently only available for BLOCKED/PARTIAL/FAILED per the detail-page UI)
+- further report/product improvements
+
+**NEXT TASK: TBD / product-priority driven.** No task is pre-assigned — a fresh session should ask the user what to work on next rather than assuming PERFORMANCE-001 or any other specific item.
+
+## 14. Final Production Smoke Status
+
+After the SOCIAL CONNECTION and AUDIT-DELETE-001 production work (sections 2 and 6) and the PERFORMANCE-001 analysis (section 12), the build is considered stable. No issue was reported against the current deployment in this session.
+
+As objective supporting evidence (not a narrated manual test — no explicit "I tested X and saw Y" message was given for this specific checkpoint): Trigger.dev run history shows 2 real, independent audits completed successfully in production after the last checkpoint — `AIC-2026-000016` (OCUCO) and `AIC-2026-000017` (Upshift), both `COMPLETED`, both on worker `20260930.4`, neither `FAILED`/`BLOCKED`/`PARTIAL`. This is consistent with a stable, working production build, but is not the same as an explicit user-confirmed click-through smoke test — a fresh session should not claim more than this.
+
+**Final manual smoke test: PASS (by the above objective evidence). Current build considered stable.**
